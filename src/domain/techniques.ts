@@ -1,0 +1,221 @@
+import { column, isLineComplete, lineEquals } from "./grid";
+import { rejectionForGrid } from "./rules";
+import type { Cell, Digit, Force, Grid, RuleId } from "./types";
+
+const RULE_ORDER: readonly RuleId[] = ["no-triple", "balance", "unique"];
+
+export interface ForceScan {
+  forces: Force[];
+  contradiction: boolean;
+}
+
+export interface SolveResult {
+  solved: boolean;
+  grid: Grid;
+  techniquesUsed: RuleId[];
+  contradiction: boolean;
+}
+
+/**
+ * One pass of forced cells.
+ * no-triple: 11_ → 0, 00_ → 1, 1_1 → 0, 0_0 → 1, and the same down a column.
+ * balance: a line that already has N/2 of one digit is filled with the other.
+ * uniqueness: a line one cell away from copying a completed line must differ.
+ * On an even line with balance also in force, that last cell is already filled
+ * by the even split, so a hint names balance when the two agree.
+ */
+export function findForces(grid: Grid, rules: readonly RuleId[]): ForceScan {
+  if (grid.length === 0 || grid[0].length === 0) {
+    return { forces: [], contradiction: false };
+  }
+  if (rejectionForGrid(grid, rules)) {
+    return { forces: [], contradiction: true };
+  }
+
+  const enabled = new Set(rules);
+  const forces: Force[] = [];
+  const claimed = new Map<string, Digit>();
+
+  const add = (row: number, col: number, digit: Digit, technique: RuleId): boolean => {
+    const current = grid[row][col];
+    if (current != null) return current === digit;
+    const key = `${row},${col}`;
+    const prev = claimed.get(key);
+    if (prev != null && prev !== digit) return false;
+    if (prev == null) {
+      claimed.set(key, digit);
+      forces.push({ row, col, digit, technique });
+    }
+    return true;
+  };
+
+  if (enabled.has("no-triple")) {
+    for (let r = 0; r < grid.length; r++) {
+      if (!applyNoTriple(grid[r], (index, digit) => add(r, index, digit, "no-triple"))) {
+        return { forces: [], contradiction: true };
+      }
+    }
+    for (let c = 0; c < grid[0].length; c++) {
+      const line = column(grid, c);
+      if (!applyNoTriple(line, (index, digit) => add(index, c, digit, "no-triple"))) {
+        return { forces: [], contradiction: true };
+      }
+    }
+  }
+
+  if (enabled.has("balance")) {
+    for (let r = 0; r < grid.length; r++) {
+      if (!applyBalance(grid[r], (index, digit) => add(r, index, digit, "balance"))) {
+        return { forces: [], contradiction: true };
+      }
+    }
+    for (let c = 0; c < grid[0].length; c++) {
+      const line = column(grid, c);
+      if (!applyBalance(line, (index, digit) => add(index, c, digit, "balance"))) {
+        return { forces: [], contradiction: true };
+      }
+    }
+  }
+
+  if (enabled.has("unique")) {
+    if (!applyUniqueness(grid, (row, col, digit) => add(row, col, digit, "unique"))) {
+      return { forces: [], contradiction: true };
+    }
+    if (!applyUniqueness(columnsAsRows(grid), (col, row, digit) => add(row, col, digit, "unique"))) {
+      return { forces: [], contradiction: true };
+    }
+  }
+
+  return { forces, contradiction: false };
+}
+
+function applyNoTriple(line: readonly Cell[], add: (index: number, digit: Digit) => boolean): boolean {
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] != null) continue;
+    const forced = noTripleAt(line, i);
+    if (forced === "contradiction") return false;
+    if (forced != null && !add(i, forced)) return false;
+  }
+  return true;
+}
+
+function noTripleAt(line: readonly Cell[], index: number): Digit | "contradiction" | null {
+  let forced: Digit | null = null;
+  const startMin = Math.max(0, index - 2);
+  const startMax = Math.min(index, line.length - 3);
+  for (let start = startMin; start <= startMax; start++) {
+    const others: Cell[] = [];
+    for (let k = 0; k < 3; k++) {
+      const at = start + k;
+      if (at === index) continue;
+      others.push(line[at]);
+    }
+    if (others.length === 2 && others[0] != null && others[0] === others[1]) {
+      const digit: Digit = others[0] === 1 ? 0 : 1;
+      if (forced != null && forced !== digit) return "contradiction";
+      forced = digit;
+    }
+  }
+  return forced;
+}
+
+function applyBalance(line: readonly Cell[], add: (index: number, digit: Digit) => boolean): boolean {
+  if (line.length % 2 !== 0) return true;
+  const half = line.length / 2;
+  let zeros = 0;
+  let ones = 0;
+  const empties: number[] = [];
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === 0) zeros++;
+    else if (line[i] === 1) ones++;
+    else empties.push(i);
+  }
+  if (zeros > half || ones > half) return false;
+  if (empties.length === 0) return true;
+  let digit: Digit | null = null;
+  if (ones === half) digit = 0;
+  else if (zeros === half) digit = 1;
+  if (digit == null) return true;
+  for (const index of empties) {
+    if (!add(index, digit)) return false;
+  }
+  return true;
+}
+
+function applyUniqueness(
+  lines: readonly (readonly Cell[])[],
+  add: (line: number, index: number, digit: Digit) => boolean,
+): boolean {
+  const completed: Cell[][] = [];
+  for (const line of lines) {
+    if (isLineComplete(line)) completed.push(line.slice());
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const empties: number[] = [];
+    for (let k = 0; k < lines[i].length; k++) {
+      if (lines[i][k] == null) empties.push(k);
+    }
+    if (empties.length !== 1) continue;
+    const index = empties[0];
+    const options: Digit[] = [];
+    for (const digit of [0, 1] as const) {
+      const candidate = lines[i].slice();
+      candidate[index] = digit;
+      const copies = completed.some((done) => lineEquals(done, candidate));
+      if (!copies) options.push(digit);
+    }
+    if (options.length === 0) return false;
+    if (options.length === 1 && !add(i, index, options[0])) return false;
+  }
+  return true;
+}
+
+function columnsAsRows(grid: Grid): Cell[][] {
+  const lines: Cell[][] = [];
+  for (let c = 0; c < grid[0].length; c++) lines.push(column(grid, c));
+  return lines;
+}
+
+export function solveByTechniques(grid: Grid, rules: readonly RuleId[]): SolveResult {
+  const next = grid.map((row) => row.slice());
+  const used = new Set<RuleId>();
+  const cellCount = next.length * (next[0]?.length ?? 0);
+  for (let pass = 0; pass <= cellCount; pass++) {
+    const scan = findForces(next, rules);
+    if (scan.contradiction) {
+      return { solved: false, grid: next, techniquesUsed: ordered(used), contradiction: true };
+    }
+    let applied = false;
+    for (const force of scan.forces) {
+      if (next[force.row][force.col] == null) {
+        next[force.row][force.col] = force.digit;
+        used.add(force.technique);
+        applied = true;
+      }
+    }
+    if (!applied) {
+      const solved = next.every((row) => row.every((cell) => cell != null)) && rejectionForGrid(next, rules) == null;
+      return { solved, grid: next, techniquesUsed: ordered(used), contradiction: false };
+    }
+  }
+  return { solved: false, grid: next, techniquesUsed: ordered(used), contradiction: true };
+}
+
+function ordered(used: Set<RuleId>): RuleId[] {
+  return RULE_ORDER.filter((rule) => used.has(rule));
+}
+
+/** The first forced cell in reading order, naming the technique that forces it. */
+export function findHint(grid: Grid, rules: readonly RuleId[]): Force | null {
+  const scan = findForces(grid, rules);
+  if (scan.contradiction || scan.forces.length === 0) return null;
+  const fresh = scan.forces.filter((force) => grid[force.row][force.col] == null);
+  if (fresh.length === 0) return null;
+  fresh.sort((a, b) => a.row - b.row || a.col - b.col || RULE_ORDER.indexOf(a.technique) - RULE_ORDER.indexOf(b.technique));
+  return fresh[0];
+}
+
+export function techniqueLabel(rule: RuleId): string {
+  if (rule === "unique") return "uniqueness";
+  return rule;
+}
