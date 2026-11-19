@@ -26,7 +26,41 @@ npm install
 npm start
 ```
 
-Press `w` for web, or scan the QR code with Expo Go on a phone.
+Press `w` for web. The same server is what Expo Go opens.
+
+## Open in Expo Go
+
+Install Expo Go for SDK 58 on a phone, then:
+
+```bash
+npm install
+npm start
+```
+
+Scan the QR code in the terminal. Expo Go loads this project and shows the same board, coach, and pad as the web app. With an emulator already running, `npx expo start --android` or `npx expo start --ios` opens that same Expo Go UI.
+
+The app id is `com.maherreven.binairo` on both platforms. The URL scheme is `binairo`.
+
+## Local native binary
+
+`android/` and `ios/` are generated from `app.json` and are not committed.
+
+```bash
+npm install
+npm run prebuild
+```
+
+Compile a debug binary and install it on a connected device or emulator:
+
+```bash
+npm run android
+```
+
+```bash
+npm run ios
+```
+
+`npm run android` needs a local Android SDK. `npm run ios` needs macOS and Xcode. A debug build uses the local debug keystore, or the Apple development certificate already on that Mac. This repo does not store Play or App Store signing secrets.
 
 ## Tests
 

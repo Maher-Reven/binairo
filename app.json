@@ -2,15 +2,21 @@
   "expo": {
     "name": "Binairo",
     "slug": "binairo",
+    "scheme": "binairo",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#f3ecdf",
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.maherreven.binairo",
+      "buildNumber": "1",
+      "supportsTablet": true,
+      "icon": "./assets/icon.png"
     },
     "android": {
+      "package": "com.maherreven.binairo",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#241c16",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,6 +29,17 @@
       "bundler": "metro",
       "favicon": "./assets/favicon.png",
       "backgroundColor": "#f3ecdf"
-    }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f3ecdf",
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "imageWidth": 200
+        }
+      ]
+    ]
   }
 }
