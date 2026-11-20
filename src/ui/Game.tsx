@@ -230,6 +230,7 @@ export function Game({ storage }: GameProps) {
         error={pickerError}
         continued={continuedTiers(state)}
         dailyStatus={dailyStatus(state)}
+        dailyStreak={state?.dailyStreak ?? 0}
         canBack={state != null}
         onPick={chooseTier}
         onDaily={openDaily}

@@ -4,7 +4,7 @@ import { countSolutions } from "./counting";
 import { generatePuzzle } from "./generator";
 import { cloneGrid } from "./grid";
 import { isSolved, placeDigit, rejectionForGrid } from "./rules";
-import { awardCompletion, completionPoints, hintCost } from "./scoring";
+import { awardCompletion, completionPoints, dailyStreakLabel, hintCost } from "./scoring";
 import { findHint, solveByTechniques } from "./techniques";
 import type { Grid, RuleId } from "./types";
 
@@ -283,5 +283,9 @@ describe("campaign and scoring", () => {
 
     const afterGap = awardCompletion(nextDay, 4, "2026-11-22");
     expect(afterGap.dailyStreak).toBe(1);
+    expect(dailyStreakLabel(0)).toBe("Daily streak: 0 days");
+    expect(dailyStreakLabel(1)).toBe("Daily streak: 1 day");
+    expect(dailyStreakLabel(afterGap.dailyStreak)).toBe("Daily streak: 1 day");
+    expect(dailyStreakLabel(nextDay.dailyStreak)).toBe("Daily streak: 2 days");
   });
 });
