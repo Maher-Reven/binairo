@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,18 +33,47 @@ jobs:
           EXPO_BASE_URL: /binairo
       - name: Keep Expo's underscore folders
         run: touch dist/.nojekyll
+      - name: Publish the gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          git init -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish the web export"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:gh-pages
+      - name: Point Pages at the export
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          gh api --method PUT -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/pages" \
+            -f build_type=workflow
+          workflow_status=$?
+          if [ "$workflow_status" -eq 0 ]; then
+            echo "pages_source=workflow" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          gh api --method PUT -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/pages" \
+            --input - <<'EOF'
+          {"build_type":"legacy","source":{"branch":"gh-pages","path":"/"}}
+          EOF
+          branch_status=$?
+          echo "workflow_put=$workflow_status branch_put=$branch_status"
+          if [ "$branch_status" -ne 0 ]; then
+            exit 1
+          fi
+          echo "pages_source=gh-pages" >> "$GITHUB_ENV"
       - name: Upload the site
+        if: env.pages_source == 'workflow'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy with GitHub Actions
         id: deployment
+        if: env.pages_source == 'workflow'
         uses: actions/deploy-pages@v4
