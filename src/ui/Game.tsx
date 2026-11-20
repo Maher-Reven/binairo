@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { campaignPuzzle, hasNextLesson, practicePuzzle } from "../game/puzzles";
+import { tierStart } from "../domain/campaign";
+import type { Tier } from "../domain/types";
+import { campaignPuzzle, hasNextLesson, newPracticePuzzle, practicePuzzle, practicePuzzleAt } from "../game/puzzles";
 import { activeSlot, createGame, reduce } from "../game/reduce";
 import type { GameState } from "../game/types";
 import { loadGame, saveGame, todayFrom, type KeyValueStore } from "../persistence/storage";
@@ -8,6 +10,7 @@ import { Board } from "./Board";
 import { BoardViewport } from "./BoardViewport";
 import { Coach } from "./Coach";
 import { Pad } from "./Pad";
+import { TierPicker } from "./TierPicker";
 import { MAX_CELL, MIN_CELL, baseCell, clampCell, sans, theme } from "./theme";
 
 interface GameProps {
@@ -16,6 +19,9 @@ interface GameProps {
 
 export function Game({ storage }: GameProps) {
   const [state, setState] = useState<GameState | null>(null);
+  const [booting, setBooting] = useState(true);
+  const [picking, setPicking] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cell, setCell] = useState(MIN_CELL);
   const { width } = useWindowDimensions();
@@ -26,10 +32,14 @@ export function Game({ storage }: GameProps) {
     loadGame(storage)
       .then((saved) => {
         if (!live) return;
-        setState(saved ?? createGame(campaignPuzzle(0)));
+        if (saved) setState(saved);
+        else setPicking(true);
       })
       .catch(() => {
-        if (live) setState(createGame(campaignPuzzle(0)));
+        if (live) setPicking(true);
+      })
+      .finally(() => {
+        if (live) setBooting(false);
       });
     return () => {
       live = false;
@@ -52,9 +62,9 @@ export function Game({ storage }: GameProps) {
     setCell(baseCell(slot.puzzle.shape, slot.puzzle.size, pane));
   }, [puzzleKey, pane]);
 
-  const ready = state != null;
+  const playing = state != null && !picking;
   useEffect(() => {
-    if (Platform.OS !== "web" || !ready) return;
+    if (Platform.OS !== "web" || !playing) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
@@ -73,14 +83,57 @@ export function Game({ storage }: GameProps) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ready]);
+  }, [playing]);
 
-  if (!state) {
+  const chooseTier = (tier: Tier) => {
+    if (busy) return;
+    setBusy(true);
+    setPickerError(null);
+    setTimeout(() => {
+      const current = stateRef.current;
+      try {
+        const start = tierStart(tier);
+        let next: GameState;
+        if (start.kind === "campaign") {
+          const puzzle = campaignPuzzle(start.campaignIndex);
+          next = current
+            ? reduce(current, { type: "start-tier", mode: "campaign", puzzle, campaignIndex: start.campaignIndex })
+            : createGame(puzzle, start.campaignIndex);
+        } else {
+          const puzzle = practicePuzzleAt(start.tier, start.shape, start.size, start.rules, Date.now() >>> 0);
+          const shell = current ?? createGame(campaignPuzzle(0), 0);
+          next = reduce(shell, { type: "start-tier", mode: "practice", puzzle });
+        }
+        setState(next);
+        setPicking(false);
+      } catch {
+        setPickerError("Could not build a board. Try again.");
+      } finally {
+        setBusy(false);
+      }
+    }, 30);
+  };
+
+  if (booting || (!state && !picking)) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator color={theme.ink} />
         <Text style={styles.loadingText}>Opening the board…</Text>
       </View>
+    );
+  }
+
+  if (picking || !state) {
+    return (
+      <TierPicker
+        busy={busy}
+        error={pickerError}
+        canBack={state != null}
+        onPick={chooseTier}
+        onBack={() => {
+          if (!busy) setPicking(false);
+        }}
+      />
     );
   }
 
@@ -113,7 +166,8 @@ export function Game({ storage }: GameProps) {
     if (state.mode === "practice") {
       build((current) => {
         const seed = (Date.now() ^ (activeSlot(current).puzzle.seed + 1)) >>> 0;
-        return reduce(current, { type: "new-practice", puzzle: practicePuzzle(current.campaignIndex, seed) });
+        const active = activeSlot(current).puzzle;
+        return reduce(current, { type: "new-practice", puzzle: newPracticePuzzle(current.campaignIndex, active, seed) });
       });
       return;
     }
@@ -140,7 +194,18 @@ export function Game({ storage }: GameProps) {
     );
   };
 
-  const coach = <Coach state={state} slot={slot} onMode={onMode} />;
+  const coach = (
+    <Coach
+      state={state}
+      slot={slot}
+      onMode={onMode}
+      onChangeTier={() => {
+        if (busy) return;
+        setPickerError(null);
+        setPicking(true);
+      }}
+    />
+  );
   const pad = (
     <Pad
       selected={state.selected}

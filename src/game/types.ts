@@ -54,4 +54,6 @@ export type Action =
   | { type: "switch-campaign" }
   | { type: "switch-practice"; puzzle: PuzzleView }
   | { type: "new-practice"; puzzle: PuzzleView }
-  | { type: "next-lesson"; puzzle: PuzzleView; campaignIndex: number };
+  | { type: "next-lesson"; puzzle: PuzzleView; campaignIndex: number }
+  | { type: "start-tier"; mode: "campaign"; puzzle: PuzzleView; campaignIndex: number }
+  | { type: "start-tier"; mode: "practice"; puzzle: PuzzleView };
