@@ -2,8 +2,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { lessonCount, sizeLabel, tierLabel } from "../domain/campaign";
 import { dailyShareLine } from "../domain/daily";
 import { hintCost } from "../domain/scoring";
+import { attemptStatus, blankStars, movePar } from "../domain/stars";
 import type { BoardSlot, GameState } from "../game/types";
 import { pressable, sans, serif, theme } from "./theme";
+import { StarReadout } from "./Stars";
 
 interface CoachProps {
   state: GameState;
@@ -33,6 +35,8 @@ export function Coach({ state, slot, elapsedLabel, shareNote, onMode, onBack, on
         clean: daily.clean,
       })
     : null;
+  const lessonStars = !daily && state.mode === "campaign";
+  const record = state.stars[puzzle.id] ?? blankStars();
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -50,6 +54,21 @@ export function Coach({ state, slot, elapsedLabel, shareNote, onMode, onBack, on
       <Text style={styles.kicker}>{daily ? "Daily" : tierLabel(puzzle.tier)}</Text>
       <Text style={styles.where}>{where}</Text>
       <Text style={styles.teach}>{puzzle.teach}</Text>
+      {lessonStars ? (
+        <View>
+          <StarReadout stars={record} />
+          {slot.won ? null : (
+            <Text style={styles.attempt}>
+              {attemptStatus({
+                par: movePar(puzzle.givens),
+                moves: slot.moves,
+                hintsUsed: slot.hintsUsed,
+                clean: slot.clean,
+              })}
+            </Text>
+          )}
+        </View>
+      ) : null}
       {event ? (
         <Text
           style={[
@@ -176,6 +195,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     marginTop: 4,
+  },
+  attempt: {
+    fontFamily: sans,
+    color: theme.coachMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
   },
   event: {
     fontFamily: sans,

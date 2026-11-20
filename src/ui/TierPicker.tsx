@@ -1,6 +1,8 @@
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { TIER_ORDER, tierLabel, tierSizeLabel, tierStart } from "../domain/campaign";
+import { lessonsForTier, lessonStarName, TIER_ORDER, tierLabel, tierSizeLabel, tierStart } from "../domain/campaign";
 import { dailyStreakLabel, hintCost } from "../domain/scoring";
+import { blankStars, starSummary } from "../domain/stars";
+import type { LessonStarsMap } from "../domain/stars";
 import type { Tier } from "../domain/types";
 import { pressable, sans, serif, theme } from "./theme";
 
@@ -10,6 +12,7 @@ interface TierPickerProps {
   continued: readonly Tier[];
   dailyStatus: "fresh" | "playing" | "won";
   dailyStreak: number;
+  stars: LessonStarsMap;
   canBack: boolean;
   onPick: (tier: Tier) => void;
   onDaily: () => void;
@@ -22,6 +25,7 @@ export function TierPicker({
   continued,
   dailyStatus,
   dailyStreak,
+  stars,
   canBack,
   onPick,
   onDaily,
@@ -44,7 +48,14 @@ export function TierPicker({
       <View style={styles.list}>
         <DailyCard status={dailyStatus} busy={busy} onDaily={onDaily} />
         {TIER_ORDER.map((tier) => (
-          <TierCard key={tier} tier={tier} continued={continued.includes(tier)} busy={busy} onPick={onPick} />
+          <TierCard
+            key={tier}
+            tier={tier}
+            continued={continued.includes(tier)}
+            busy={busy}
+            stars={stars}
+            onPick={onPick}
+          />
         ))}
       </View>
       {busy ? <Text style={styles.status}>Building a board…</Text> : null}
@@ -100,18 +111,24 @@ function TierCard({
   tier,
   continued,
   busy,
+  stars,
   onPick,
 }: {
   tier: Tier;
   continued: boolean;
   busy: boolean;
+  stars: LessonStarsMap;
   onPick: (tier: Tier) => void;
 }) {
   const detail = tierDetail(tier, continued);
+  const lessons = lessonsForTier(tier);
+  const lessonLabel = lessons
+    .map((lesson) => `${lessonStarName(lesson)}, ${starSummary(stars[lesson.id])}`)
+    .join(". ");
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${tierLabel(tier)}. ${tierSizeLabel(tier)}. ${detail}`}
+      accessibilityLabel={`${tierLabel(tier)}. ${tierSizeLabel(tier)}. ${detail}. ${lessonLabel}`}
       accessibilityState={{ disabled: busy }}
       disabled={busy}
       onPress={() => onPick(tier)}
@@ -120,6 +137,18 @@ function TierCard({
       <Text style={styles.name}>{tierLabel(tier)}</Text>
       <Text style={styles.sizes}>{tierSizeLabel(tier)}</Text>
       <Text style={styles.detail}>{detail}</Text>
+      <Text style={styles.starKey}>Clean, par, no hint</Text>
+      {lessons.map((lesson) => {
+        const record = stars[lesson.id] ?? blankStars();
+        return (
+          <Text key={lesson.id} style={styles.lessonLine}>
+            {lessonStarName(lesson)}{" "}
+            <Text style={record.clean ? styles.starOn : styles.starOff}>{record.clean ? "★" : "☆"}</Text>
+            <Text style={record.par ? styles.starOn : styles.starOff}>{record.par ? "★" : "☆"}</Text>
+            <Text style={record.hint ? styles.starOn : styles.starOff}>{record.hint ? "★" : "☆"}</Text>
+          </Text>
+        );
+      })}
     </Pressable>
   );
 }
@@ -228,6 +257,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 2,
+  },
+  starKey: {
+    fontFamily: sans,
+    color: theme.inkSoft,
+    fontSize: 12,
+    marginTop: 8,
+  },
+  lessonLine: {
+    fontFamily: sans,
+    color: theme.ink,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  starOn: {
+    color: theme.gold,
+  },
+  starOff: {
+    color: theme.line,
   },
   status: {
     fontFamily: sans,

@@ -144,3 +144,18 @@ export function tierStart(tier: Tier, lessons: readonly { tier: Tier }[] = LESSO
 export function sizeLabel(shape: BoardShape, size: number): string {
   return shape === "line" ? `line of ${size}` : `${size}×${size}`;
 }
+
+export function lessonsForTier(tier: Tier, lessons: readonly Lesson[] = LESSONS): readonly Lesson[] {
+  return lessons.filter((lesson) => lesson.tier === tier);
+}
+
+export function isCampaignLesson(id: string, lessons: readonly Lesson[] = LESSONS): boolean {
+  return lessons.some((lesson) => lesson.id === id);
+}
+
+/** Short name for the star row. The two 4×4 lessons stay distinct. */
+export function lessonStarName(lesson: Pick<Lesson, "id" | "shape" | "size">): string {
+  if (lesson.shape === "line") return "Line";
+  if (lesson.id === "grid4-balance") return "4×4 balance";
+  return sizeLabel(lesson.shape, lesson.size);
+}

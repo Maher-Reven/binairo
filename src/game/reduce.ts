@@ -1,6 +1,8 @@
 import { gridsEqual, cloneGrid } from "../domain/grid";
 import { isSolved, placeDigit } from "../domain/rules";
 import { awardCompletion, chargeHint, hintCost } from "../domain/scoring";
+import { cloneStars, mergeStars, movePar, starsForAttempt } from "../domain/stars";
+import { isCampaignLesson } from "../domain/campaign";
 import { findHint, techniqueLabel } from "../domain/techniques";
 import type { Grid, Tier } from "../domain/types";
 import { snapshotTier } from "./snapshot";
@@ -20,7 +22,14 @@ const UNDO_LIMIT = 200;
 
 export function activeSlot(state: GameState): BoardSlot {
   if (state.surface === "daily" && state.daily) {
-    return { puzzle: state.daily.puzzle, grid: state.daily.grid, won: state.daily.won };
+    return {
+      puzzle: state.daily.puzzle,
+      grid: state.daily.grid,
+      won: state.daily.won,
+      clean: state.daily.clean,
+      moves: 0,
+      hintsUsed: state.daily.hintsUsed,
+    };
   }
   if (state.mode === "practice" && state.practice) return state.practice;
   return state.campaign;
@@ -43,6 +52,7 @@ export function createGame(campaign: PuzzleView, campaignIndex = 0): GameState {
     undo: [],
     surface: "tier",
     daily: null,
+    stars: {},
   };
 }
 
@@ -57,10 +67,11 @@ export function createPracticeGame(practice: PuzzleView, campaign: PuzzleView, c
 }
 
 function freshSlot(puzzle: PuzzleView): BoardSlot {
-  return { puzzle, grid: cloneGrid(puzzle.givens), won: false };
+  return { puzzle, grid: cloneGrid(puzzle.givens), won: false, clean: true, moves: 0, hintsUsed: 0 };
 }
 
 function frameOf(state: GameState, grid: Grid): UndoFrame {
+  const slot = activeSlot(state);
   return {
     grid: cloneGrid(grid),
     coachLine: state.coachLine,
@@ -68,7 +79,11 @@ function frameOf(state: GameState, grid: Grid): UndoFrame {
     puzzleStreak: state.puzzleStreak,
     dailyStreak: state.dailyStreak,
     lastCompletionDay: state.lastCompletionDay,
-    won: activeSlot(state).won,
+    won: slot.won,
+    clean: slot.clean,
+    moves: slot.moves,
+    hintsUsed: slot.hintsUsed,
+    stars: cloneStars(state.stars),
   };
 }
 
@@ -114,7 +129,19 @@ function applyGrid(
     dailyStreak: award.dailyStreak,
     lastCompletionDay: award.lastCompletionDay,
     coachLine: solvedLine,
+    stars: awardedStars(state, slot),
   });
+}
+
+function awardedStars(state: GameState, slot: BoardSlot): GameState["stars"] {
+  if (state.mode !== "campaign" || !isCampaignLesson(slot.puzzle.id)) return state.stars;
+  const earned = starsForAttempt({
+    clean: slot.clean,
+    moves: slot.moves,
+    hintsUsed: slot.hintsUsed,
+    par: movePar(slot.puzzle.givens),
+  });
+  return { ...state.stars, [slot.puzzle.id]: mergeStars(state.stars[slot.puzzle.id], earned) };
 }
 
 export function reduce(state: GameState, action: Action): GameState {
@@ -211,6 +238,7 @@ function resumeTier(
     undo: ledgerMoved ? [] : saved.undo,
     surface: "tier",
     daily: state.daily,
+    stars: state.stars,
   };
 }
 
@@ -232,6 +260,7 @@ function beginFresh(
     coachLine: "",
     surface: "tier" as const,
     daily: state.daily,
+    stars: state.stars,
   };
   if (fresh.mode === "campaign") {
     return {
@@ -264,12 +293,17 @@ function tap(state: GameState, row: number, col: number, today: string): GameSta
     if (grid[row][col] == null) return state;
     const next = cloneGrid(grid);
     next[row][col] = null;
-    return pushUndo(state, { ...slot, grid: next, won: false }, { coachLine: "" });
+    return pushUndo(state, { ...slot, grid: next, won: false, moves: slot.moves + 1 }, { coachLine: "" });
   }
   if (grid[row][col] === state.selected) return state;
   const placed = placeDigit(grid, row, col, state.selected, slot.puzzle.rules);
-  if (!placed.ok) return { ...state, coachLine: placed.rejection.message };
-  return applyGrid(state, { ...slot, grid: placed.grid }, today, "", state.points);
+  if (!placed.ok) return rejectPlacement(state, slot, placed.rejection.message);
+  return applyGrid(state, { ...slot, grid: placed.grid, moves: slot.moves + 1 }, today, "", state.points);
+}
+
+function rejectPlacement(state: GameState, slot: BoardSlot, message: string): GameState {
+  if (!slot.clean) return { ...state, coachLine: message };
+  return commit(state, { ...slot, clean: false }, { coachLine: message });
 }
 
 function undo(state: GameState): GameState {
@@ -279,7 +313,7 @@ function undo(state: GameState): GameState {
   const slot = activeSlot(state);
   return commit(
     state,
-    { ...slot, grid: cloneGrid(previous.grid), won: previous.won },
+    { ...slot, grid: cloneGrid(previous.grid), won: previous.won, clean: previous.clean, moves: previous.moves, hintsUsed: previous.hintsUsed },
     {
       undo: state.undo.slice(0, -1),
       coachLine: previous.coachLine,
@@ -287,6 +321,7 @@ function undo(state: GameState): GameState {
       puzzleStreak: previous.puzzleStreak,
       dailyStreak: previous.dailyStreak,
       lastCompletionDay: previous.lastCompletionDay,
+      stars: previous.stars ?? state.stars,
     },
   );
 }
@@ -314,7 +349,13 @@ function hint(state: GameState, today: string): GameState {
   if (!placed.ok) return { ...state, coachLine: placed.rejection.message };
   const charged = chargeHint(state.points, slot.puzzle.tier);
   const line = `Hint: ${techniqueLabel(force.technique)} places ${force.digit}.`;
-  return applyGrid(state, { ...slot, grid: placed.grid }, today, line, charged);
+  return applyGrid(
+    state,
+    { ...slot, grid: placed.grid, moves: slot.moves + 1, hintsUsed: slot.hintsUsed + 1 },
+    today,
+    line,
+    charged,
+  );
 }
 
 function switchCampaign(state: GameState): GameState {
