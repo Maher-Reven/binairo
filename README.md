@@ -19,6 +19,8 @@ npm run build:web
 
 The site is written to `dist/`. Serve that folder with any static file server.
 
+The hosted game is [https://maher-reven.github.io/binairo/](https://maher-reven.github.io/binairo/). Every push to `main` exports the web app and publishes that folder with GitHub Actions. The workflow sets `EXPO_BASE_URL=/binairo`, so the scripts and images load from that Pages path. A local `npm run build:web` leaves the base path empty and is meant for a server root.
+
 ## Start the Expo dev server
 
 ```bash
