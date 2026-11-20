@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { tierStart } from "../domain/campaign";
+import { TIER_ORDER, tierStart } from "../domain/campaign";
 import type { Tier } from "../domain/types";
 import { campaignPuzzle, hasNextLesson, newPracticePuzzle, practicePuzzle, practicePuzzleAt } from "../game/puzzles";
-import { activeSlot, createGame, reduce } from "../game/reduce";
+import { activeSlot, createGame, createPracticeGame, reduce } from "../game/reduce";
 import type { GameState } from "../game/types";
 import { loadGame, saveGame, todayFrom, type KeyValueStore } from "../persistence/storage";
 import { Board } from "./Board";
@@ -87,22 +87,34 @@ export function Game({ storage }: GameProps) {
 
   const chooseTier = (tier: Tier) => {
     if (busy) return;
+    const current = stateRef.current;
+    if (current?.tier === tier) {
+      setPickerError(null);
+      setPicking(false);
+      return;
+    }
+    if (current?.savedTiers[tier]) {
+      setPickerError(null);
+      setState(reduce(current, { type: "choose-tier", tier }));
+      setPicking(false);
+      return;
+    }
     setBusy(true);
     setPickerError(null);
     setTimeout(() => {
-      const current = stateRef.current;
+      const latest = stateRef.current;
       try {
         const start = tierStart(tier);
         let next: GameState;
         if (start.kind === "campaign") {
           const puzzle = campaignPuzzle(start.campaignIndex);
-          next = current
-            ? reduce(current, { type: "start-tier", mode: "campaign", puzzle, campaignIndex: start.campaignIndex })
-            : createGame(puzzle, start.campaignIndex);
+          const fresh = { mode: "campaign" as const, puzzle, campaignIndex: start.campaignIndex };
+          next = latest ? reduce(latest, { type: "choose-tier", tier, fresh }) : createGame(puzzle, start.campaignIndex);
         } else {
           const puzzle = practicePuzzleAt(start.tier, start.shape, start.size, start.rules, Date.now() >>> 0);
-          const shell = current ?? createGame(campaignPuzzle(0), 0);
-          next = reduce(shell, { type: "start-tier", mode: "practice", puzzle });
+          const campaign = campaignPuzzle(0);
+          const fresh = { mode: "practice" as const, puzzle, campaign, campaignIndex: 0 };
+          next = latest ? reduce(latest, { type: "choose-tier", tier, fresh }) : createPracticeGame(puzzle, campaign, 0);
         }
         setState(next);
         setPicking(false);
@@ -112,6 +124,12 @@ export function Game({ storage }: GameProps) {
         setBusy(false);
       }
     }, 30);
+  };
+
+  const backToPicker = () => {
+    if (busy) return;
+    setPickerError(null);
+    setPicking(true);
   };
 
   if (booting || (!state && !picking)) {
@@ -128,6 +146,7 @@ export function Game({ storage }: GameProps) {
       <TierPicker
         busy={busy}
         error={pickerError}
+        continued={continuedTiers(state)}
         canBack={state != null}
         onPick={chooseTier}
         onBack={() => {
@@ -199,11 +218,7 @@ export function Game({ storage }: GameProps) {
       state={state}
       slot={slot}
       onMode={onMode}
-      onChangeTier={() => {
-        if (busy) return;
-        setPickerError(null);
-        setPicking(true);
-      }}
+      onBack={backToPicker}
     />
   );
   const pad = (
@@ -259,6 +274,15 @@ export function Game({ storage }: GameProps) {
       )}
     </View>
   );
+}
+
+function continuedTiers(state: GameState | null): readonly Tier[] {
+  if (!state) return [];
+  const found = new Set<Tier>([state.tier]);
+  for (const tier of TIER_ORDER) {
+    if (state.savedTiers[tier]) found.add(tier);
+  }
+  return TIER_ORDER.filter((tier) => found.has(tier));
 }
 
 const styles = StyleSheet.create({

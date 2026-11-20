@@ -1,6 +1,6 @@
 # Binairo
 
-A local Binairo (Takuzu) puzzle. One Expo app runs in the browser and as a phone binary. Before the first board you pick Junior, Medium, Intermediate, or Advanced, and the game starts at that tier. Change tier later from the coach. Campaign lessons teach the rules on fixed boards. Practice deals a new board at the lesson you are on. Points and streaks stay on the device. There is no account, score server, share sheet, or leaderboard yet.
+A local Binairo (Takuzu) puzzle. One Expo app runs in the browser and as a phone binary. Before the first board you pick Junior, Medium, Intermediate, or Advanced. Back returns to that list and leaves the board where it was. Each tier keeps its own board on the device: choosing a tier continues that board, or starts one the first time. Campaign lessons teach the rules on fixed boards. Practice deals a new board at the lesson you are on. Points and streaks stay on the device. There is no account, score server, share sheet, or leaderboard yet.
 
 Hint costs are provisional: Junior 0, Medium 10, Intermediate 25, Advanced 40. A hint that finds nothing is free, and points never go below 0.
 
@@ -68,4 +68,4 @@ npm run ios
 npm test
 ```
 
-The tests cover the rules, rejection reasons, unique solutions, a junior board that the technique solver finishes without guessing, and which board a tier starts on. They do not need a simulator.
+The tests cover the rules, rejection reasons, unique solutions, a junior board that the technique solver finishes without guessing, which board a tier starts on, and that each tier keeps its own board. They do not need a simulator.

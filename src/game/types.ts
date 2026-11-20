@@ -30,11 +30,34 @@ export interface BoardSlot {
 
 export type Mode = "campaign" | "practice";
 
+/** One tier's in-progress play, including the score at the time it was stored. */
+export interface TierSnapshot {
+  points: number;
+  puzzleStreak: number;
+  dailyStreak: number;
+  lastCompletionDay: string | null;
+  campaignIndex: number;
+  mode: Mode;
+  selected: Digit | "erase";
+  coachLine: string;
+  campaign: BoardSlot;
+  practice: BoardSlot | null;
+  undo: UndoFrame[];
+}
+
+export type FreshTier =
+  | { mode: "campaign"; puzzle: PuzzleView; campaignIndex: number }
+  | { mode: "practice"; puzzle: PuzzleView; campaign: PuzzleView; campaignIndex: number };
+
 export interface GameState {
   points: number;
   puzzleStreak: number;
   dailyStreak: number;
   lastCompletionDay: string | null;
+  /** Tier the player chose. Its board is the live campaign and practice slots. */
+  tier: Tier;
+  /** Boards for the other tiers. The live tier is not stored here. */
+  savedTiers: Partial<Record<Tier, TierSnapshot>>;
   campaignIndex: number;
   mode: Mode;
   selected: Digit | "erase";
@@ -55,5 +78,4 @@ export type Action =
   | { type: "switch-practice"; puzzle: PuzzleView }
   | { type: "new-practice"; puzzle: PuzzleView }
   | { type: "next-lesson"; puzzle: PuzzleView; campaignIndex: number }
-  | { type: "start-tier"; mode: "campaign"; puzzle: PuzzleView; campaignIndex: number }
-  | { type: "start-tier"; mode: "practice"; puzzle: PuzzleView };
+  | { type: "choose-tier"; tier: Tier; fresh?: FreshTier };

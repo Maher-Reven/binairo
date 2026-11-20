@@ -2,8 +2,9 @@ import { gridsEqual, cloneGrid } from "../domain/grid";
 import { isSolved, placeDigit } from "../domain/rules";
 import { awardCompletion, chargeHint, hintCost } from "../domain/scoring";
 import { findHint, techniqueLabel } from "../domain/techniques";
-import type { Grid } from "../domain/types";
-import type { Action, BoardSlot, GameState, PuzzleView, UndoFrame } from "./types";
+import type { Grid, Tier } from "../domain/types";
+import { snapshotTier } from "./snapshot";
+import type { Action, BoardSlot, FreshTier, GameState, PuzzleView, TierSnapshot, UndoFrame } from "./types";
 
 const UNDO_LIMIT = 200;
 
@@ -18,6 +19,8 @@ export function createGame(campaign: PuzzleView, campaignIndex = 0): GameState {
     puzzleStreak: 0,
     dailyStreak: 0,
     lastCompletionDay: null,
+    tier: campaign.tier,
+    savedTiers: {},
     campaignIndex,
     mode: "campaign",
     selected: 0,
@@ -25,6 +28,16 @@ export function createGame(campaign: PuzzleView, campaignIndex = 0): GameState {
     campaign: freshSlot(campaign),
     practice: null,
     undo: [],
+  };
+}
+
+/** A first board for a tier that has no campaign lesson. */
+export function createPracticeGame(practice: PuzzleView, campaign: PuzzleView, campaignIndex = 0): GameState {
+  return {
+    ...createGame(campaign, campaignIndex),
+    tier: practice.tier,
+    mode: "practice",
+    practice: freshSlot(practice),
   };
 }
 
@@ -122,31 +135,92 @@ export function reduce(state: GameState, action: Action): GameState {
         undo: [],
         coachLine: "",
       };
-    case "start-tier":
-      return startTier(state, action);
+    case "choose-tier":
+      return chooseTier(state, action.tier, action.fresh);
     default:
       return state;
   }
 }
 
-function startTier(state: GameState, action: Extract<Action, { type: "start-tier" }>): GameState {
-  if (action.mode === "campaign") {
+/**
+ * Opens a tier. An existing board for that tier is restored.
+ * The tier being left is stored beside it, so the new board cannot replace it.
+ * Choosing the tier already on screen leaves that board alone.
+ */
+function chooseTier(state: GameState, tier: Tier, fresh?: FreshTier): GameState {
+  if (state.tier === tier) return state;
+  const existing = state.savedTiers[tier];
+  if (!existing && !fresh) return state;
+  const savedTiers: Partial<Record<Tier, TierSnapshot>> = {
+    ...state.savedTiers,
+    [state.tier]: snapshotTier(state),
+  };
+  delete savedTiers[tier];
+  if (existing) return resumeTier(existing, state, savedTiers, tier);
+  if (!fresh) return state;
+  return beginFresh(state, tier, fresh, savedTiers);
+}
+
+function resumeTier(
+  saved: TierSnapshot,
+  state: GameState,
+  savedTiers: Partial<Record<Tier, TierSnapshot>>,
+  tier: Tier,
+): GameState {
+  const ledgerMoved =
+    saved.points !== state.points ||
+    saved.puzzleStreak !== state.puzzleStreak ||
+    saved.dailyStreak !== state.dailyStreak ||
+    saved.lastCompletionDay !== state.lastCompletionDay;
+  return {
+    points: state.points,
+    puzzleStreak: state.puzzleStreak,
+    dailyStreak: state.dailyStreak,
+    lastCompletionDay: state.lastCompletionDay,
+    tier,
+    savedTiers,
+    campaignIndex: saved.campaignIndex,
+    mode: saved.mode,
+    selected: saved.selected,
+    coachLine: saved.coachLine,
+    campaign: saved.campaign,
+    practice: saved.practice,
+    undo: ledgerMoved ? [] : saved.undo,
+  };
+}
+
+function beginFresh(
+  state: GameState,
+  tier: Tier,
+  fresh: FreshTier,
+  savedTiers: Partial<Record<Tier, TierSnapshot>>,
+): GameState {
+  const shared = {
+    points: state.points,
+    puzzleStreak: state.puzzleStreak,
+    dailyStreak: state.dailyStreak,
+    lastCompletionDay: state.lastCompletionDay,
+    tier,
+    savedTiers,
+    selected: state.selected,
+    undo: [] as UndoFrame[],
+    coachLine: "",
+  };
+  if (fresh.mode === "campaign") {
     return {
-      ...state,
+      ...shared,
       mode: "campaign",
-      campaignIndex: action.campaignIndex,
-      campaign: freshSlot(action.puzzle),
+      campaignIndex: fresh.campaignIndex,
+      campaign: freshSlot(fresh.puzzle),
       practice: null,
-      undo: [],
-      coachLine: "",
     };
   }
   return {
-    ...state,
+    ...shared,
     mode: "practice",
-    practice: freshSlot(action.puzzle),
-    undo: [],
-    coachLine: "",
+    campaignIndex: fresh.campaignIndex,
+    campaign: freshSlot(fresh.campaign),
+    practice: freshSlot(fresh.puzzle),
   };
 }
 

@@ -134,11 +134,16 @@ describe("play", () => {
     expect(activeSlot(back).grid[0][2]).toBe(0);
   });
 
-  it("starts a chosen tier at its lesson and keeps points and streaks", () => {
+  it("starts a new tier and keeps the board that was left behind", () => {
     const won = playToWin();
     const puzzle = linePuzzle("medium");
     puzzle.id = "grid8";
-    const next = reduce(won, { type: "start-tier", mode: "campaign", puzzle, campaignIndex: 4 });
+    const next = reduce(won, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle, campaignIndex: 4 },
+    });
+    expect(next.tier).toBe("medium");
     expect(next.points).toBe(66);
     expect(next.puzzleStreak).toBe(1);
     expect(next.dailyStreak).toBe(1);
@@ -150,24 +155,86 @@ describe("play", () => {
     expect(next.campaign.grid).toEqual(puzzle.givens);
     expect(next.practice).toBeNull();
     expect(next.undo).toEqual([]);
-    expect(next.coachLine).toBe("");
+    expect(next.savedTiers.junior?.campaign.won).toBe(true);
+    expect(next.savedTiers.junior?.campaign.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
+    expect(next.savedTiers.medium).toBeUndefined();
   });
 
-  it("starts practice at the given board and keeps the campaign and the economy", () => {
+  it("resumes a tier's board and does not overwrite the one just left", () => {
+    const won = playToWin();
+    const puzzle = linePuzzle("medium");
+    puzzle.id = "grid8";
+    const medium = reduce(won, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle, campaignIndex: 4 },
+    });
+    const played = reduce(reduce(medium, { type: "select", tool: 0 }), {
+      type: "tap",
+      row: 0,
+      col: 2,
+      today: TODAY,
+    });
+    const freshJunior = linePuzzle();
+    freshJunior.id = "replacement";
+    const back = reduce(played, {
+      type: "choose-tier",
+      tier: "junior",
+      fresh: { mode: "campaign", puzzle: freshJunior, campaignIndex: 0 },
+    });
+    expect(back.tier).toBe("junior");
+    expect(activeSlot(back).won).toBe(true);
+    expect(activeSlot(back).grid).toEqual([[1, 1, 0, 1, 0, 0]]);
+    expect(back.savedTiers.medium?.campaign.puzzle.id).toBe("grid8");
+    expect(back.savedTiers.medium?.campaign.grid[0][2]).toBe(0);
+    expect(back.points).toBe(66);
+  });
+
+  it("choosing the open tier leaves that board in place", () => {
+    const moved = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const again = reduce(moved, {
+      type: "choose-tier",
+      tier: "junior",
+      fresh: { mode: "campaign", puzzle: linePuzzle(), campaignIndex: 0 },
+    });
+    expect(again).toBe(moved);
+  });
+
+  it("resets only the current tier's board", () => {
+    const junior = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const puzzle = linePuzzle("medium");
+    puzzle.id = "grid8";
+    const medium = reduce(junior, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle, campaignIndex: 4 },
+    });
+    const started = reduce(medium, { type: "tap", row: 0, col: 2, today: TODAY });
+    const reset = reduce(started, { type: "reset" });
+    expect(reset.tier).toBe("medium");
+    expect(activeSlot(reset).grid).toEqual(puzzle.givens);
+    expect(reset.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(reset.puzzleStreak).toBe(0);
+  });
+
+  it("starts practice for a tier that has no saved board and keeps the other tier", () => {
     const won = playToWin();
     const puzzle = linePuzzle("advanced");
     puzzle.id = "practice-advanced";
-    const next = reduce(won, { type: "start-tier", mode: "practice", puzzle });
+    const dormant = linePuzzle();
+    dormant.id = "dormant";
+    const next = reduce(won, {
+      type: "choose-tier",
+      tier: "advanced",
+      fresh: { mode: "practice", puzzle, campaign: dormant, campaignIndex: 0 },
+    });
+    expect(next.tier).toBe("advanced");
     expect(next.mode).toBe("practice");
     expect(next.points).toBe(66);
-    expect(next.puzzleStreak).toBe(1);
-    expect(next.dailyStreak).toBe(1);
-    expect(next.campaignIndex).toBe(won.campaignIndex);
-    expect(next.campaign).toEqual(won.campaign);
     expect(activeSlot(next).puzzle).toBe(puzzle);
     expect(activeSlot(next).grid).toEqual(puzzle.givens);
-    expect(activeSlot(next).won).toBe(false);
-    expect(next.undo).toEqual([]);
+    expect(next.campaign.puzzle.id).toBe("dormant");
+    expect(next.savedTiers.junior?.campaign.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
   });
 
   it("rejects a copied row", () => {
@@ -203,9 +270,53 @@ describe("persistence", () => {
 
   it("restores a given that a save tried to erase", () => {
     const state = createGame(linePuzzle());
-    const raw = JSON.parse(serialize(state)) as { campaign: { grid: (number | null)[][] } };
-    raw.campaign.grid[0][0] = null;
+    const raw = JSON.parse(serialize(state)) as {
+      tier: "junior";
+      tiers: { junior: { campaign: { grid: (number | null)[][] } } };
+    };
+    raw.tiers[raw.tier].campaign.grid[0][0] = null;
     const loaded = hydrate(JSON.stringify(raw));
     expect(loaded?.campaign.grid[0][0]).toBe(1);
+  });
+
+  it("keeps each tier's board in the save", async () => {
+    const junior = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const puzzle = linePuzzle("medium");
+    puzzle.id = "grid8";
+    const medium = reduce(junior, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle, campaignIndex: 4 },
+    });
+    const store = memoryStore();
+    await saveGame(store, medium);
+    const loaded = await loadGame(store);
+    expect(loaded).toEqual(medium);
+    expect(loaded?.tier).toBe("medium");
+    expect(loaded?.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(loaded?.campaign.grid).toEqual(puzzle.givens);
+  });
+
+  it("loads a version 1 save as that board's tier", () => {
+    const state = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const legacy = {
+      version: 1,
+      points: state.points,
+      puzzleStreak: state.puzzleStreak,
+      dailyStreak: state.dailyStreak,
+      lastCompletionDay: state.lastCompletionDay,
+      campaignIndex: state.campaignIndex,
+      mode: state.mode,
+      selected: state.selected,
+      coachLine: state.coachLine,
+      campaign: state.campaign,
+      practice: state.practice,
+      undo: state.undo,
+    };
+    const loaded = hydrate(JSON.stringify(legacy));
+    expect(loaded?.tier).toBe("junior");
+    expect(loaded?.savedTiers).toEqual({});
+    expect(loaded?.campaign.grid[0][2]).toBe(0);
+    expect(loaded?.points).toBe(0);
   });
 });

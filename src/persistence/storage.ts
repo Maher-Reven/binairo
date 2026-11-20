@@ -1,7 +1,8 @@
 import { cloneGrid } from "../domain/grid";
 import { localDay } from "../domain/scoring";
 import type { Cell, Grid, RuleId, Tier } from "../domain/types";
-import type { BoardSlot, GameState, Mode, PuzzleView, UndoFrame } from "../game/types";
+import { snapshotTier } from "../game/snapshot";
+import type { BoardSlot, GameState, PuzzleView, TierSnapshot, UndoFrame } from "../game/types";
 
 export interface KeyValueStore {
   getItem(key: string): Promise<string | null>;
@@ -25,35 +26,29 @@ export function memoryStore(initial: Record<string, string> = {}): KeyValueStore
   };
 }
 
-interface SavedGame {
-  version: 1;
+interface SavedProfile {
+  version: 2;
   points: number;
   puzzleStreak: number;
   dailyStreak: number;
   lastCompletionDay: string | null;
-  campaignIndex: number;
-  mode: Mode;
-  selected: 0 | 1 | "erase";
-  coachLine: string;
-  campaign: BoardSlot;
-  practice: BoardSlot | null;
-  undo: UndoFrame[];
+  tier: Tier;
+  tiers: Partial<Record<Tier, TierSnapshot>>;
 }
 
 export function serialize(state: GameState): string {
-  const saved: SavedGame = {
-    version: 1,
+  const tiers: Partial<Record<Tier, TierSnapshot>> = {
+    ...state.savedTiers,
+    [state.tier]: snapshotTier(state),
+  };
+  const saved: SavedProfile = {
+    version: 2,
     points: state.points,
     puzzleStreak: state.puzzleStreak,
     dailyStreak: state.dailyStreak,
     lastCompletionDay: state.lastCompletionDay,
-    campaignIndex: state.campaignIndex,
-    mode: state.mode,
-    selected: state.selected,
-    coachLine: state.coachLine,
-    campaign: state.campaign,
-    practice: state.practice,
-    undo: state.undo,
+    tier: state.tier,
+    tiers,
   };
   return JSON.stringify(saved);
 }
@@ -61,36 +56,114 @@ export function serialize(state: GameState): string {
 export function hydrate(raw: string): GameState | null {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed) || parsed.version !== 1) return null;
-    const campaign = parseSlot(parsed.campaign);
-    const practice = parsed.practice == null ? null : parseSlot(parsed.practice);
-    if (!campaign || (parsed.practice != null && !practice)) return null;
-    if (typeof parsed.points !== "number" || typeof parsed.puzzleStreak !== "number") return null;
-    if (typeof parsed.dailyStreak !== "number" || typeof parsed.campaignIndex !== "number") return null;
-    if (parsed.mode !== "campaign" && parsed.mode !== "practice") return null;
-    if (parsed.mode === "practice" && !practice) return null;
-    if (parsed.selected !== 0 && parsed.selected !== 1 && parsed.selected !== "erase") return null;
-    if (typeof parsed.coachLine !== "string") return null;
-    const last = parsed.lastCompletionDay;
-    if (last != null && (typeof last !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(last))) return null;
-    const undo = parseUndo(parsed.undo);
-    if (!undo) return null;
-    return {
-      points: parsed.points,
-      puzzleStreak: parsed.puzzleStreak,
-      dailyStreak: parsed.dailyStreak,
-      lastCompletionDay: last ?? null,
-      campaignIndex: parsed.campaignIndex,
-      mode: parsed.mode,
-      selected: parsed.selected,
-      coachLine: parsed.coachLine,
-      campaign,
-      practice,
-      undo,
-    };
+    if (!isRecord(parsed)) return null;
+    if (parsed.version === 1) return hydrateLegacy(parsed);
+    if (parsed.version === 2) return hydrateProfile(parsed);
+    return null;
   } catch {
     return null;
   }
+}
+
+function hydrateLegacy(parsed: Record<string, unknown>): GameState | null {
+  const snap = parseSnapshot(parsed);
+  if (!snap) return null;
+  const tier = snap.mode === "practice" && snap.practice ? snap.practice.puzzle.tier : snap.campaign.puzzle.tier;
+  return gameFrom(snap, tier, {}, economyOf(snap));
+}
+
+function hydrateProfile(parsed: Record<string, unknown>): GameState | null {
+  if (!isTier(parsed.tier) || !isRecord(parsed.tiers)) return null;
+  const economy = parseEconomy(parsed);
+  if (!economy) return null;
+  const savedTiers: Partial<Record<Tier, TierSnapshot>> = {};
+  for (const tier of TIERS) {
+    const entry = parsed.tiers[tier];
+    if (entry == null) continue;
+    const snap = parseSnapshot(entry);
+    if (snap) savedTiers[tier] = snap;
+  }
+  const live = savedTiers[parsed.tier];
+  if (!live) return null;
+  delete savedTiers[parsed.tier];
+  return gameFrom(live, parsed.tier, savedTiers, economy);
+}
+
+function gameFrom(
+  snap: TierSnapshot,
+  tier: Tier,
+  savedTiers: Partial<Record<Tier, TierSnapshot>>,
+  economy: { points: number; puzzleStreak: number; dailyStreak: number; lastCompletionDay: string | null },
+): GameState {
+  const ledgerMoved =
+    snap.points !== economy.points ||
+    snap.puzzleStreak !== economy.puzzleStreak ||
+    snap.dailyStreak !== economy.dailyStreak ||
+    snap.lastCompletionDay !== economy.lastCompletionDay;
+  return {
+    points: economy.points,
+    puzzleStreak: economy.puzzleStreak,
+    dailyStreak: economy.dailyStreak,
+    lastCompletionDay: economy.lastCompletionDay,
+    tier,
+    savedTiers,
+    campaignIndex: snap.campaignIndex,
+    mode: snap.mode,
+    selected: snap.selected,
+    coachLine: snap.coachLine,
+    campaign: snap.campaign,
+    practice: snap.practice,
+    undo: ledgerMoved ? [] : snap.undo,
+  };
+}
+
+function economyOf(snap: TierSnapshot) {
+  return {
+    points: snap.points,
+    puzzleStreak: snap.puzzleStreak,
+    dailyStreak: snap.dailyStreak,
+    lastCompletionDay: snap.lastCompletionDay,
+  };
+}
+
+function parseEconomy(
+  parsed: Record<string, unknown>,
+): { points: number; puzzleStreak: number; dailyStreak: number; lastCompletionDay: string | null } | null {
+  if (typeof parsed.points !== "number" || typeof parsed.puzzleStreak !== "number") return null;
+  if (typeof parsed.dailyStreak !== "number") return null;
+  const last = parsed.lastCompletionDay;
+  if (last != null && (typeof last !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(last))) return null;
+  return {
+    points: parsed.points,
+    puzzleStreak: parsed.puzzleStreak,
+    dailyStreak: parsed.dailyStreak,
+    lastCompletionDay: last ?? null,
+  };
+}
+
+function parseSnapshot(value: unknown): TierSnapshot | null {
+  if (!isRecord(value)) return null;
+  const campaign = parseSlot(value.campaign);
+  const practice = value.practice == null ? null : parseSlot(value.practice);
+  if (!campaign || (value.practice != null && !practice)) return null;
+  const economy = parseEconomy(value);
+  if (!economy || typeof value.campaignIndex !== "number") return null;
+  if (value.mode !== "campaign" && value.mode !== "practice") return null;
+  if (value.mode === "practice" && !practice) return null;
+  if (value.selected !== 0 && value.selected !== 1 && value.selected !== "erase") return null;
+  if (typeof value.coachLine !== "string") return null;
+  const undo = parseUndo(value.undo);
+  if (!undo) return null;
+  return {
+    ...economy,
+    campaignIndex: value.campaignIndex,
+    mode: value.mode,
+    selected: value.selected,
+    coachLine: value.coachLine,
+    campaign,
+    practice,
+    undo,
+  };
 }
 
 export async function loadGame(store: KeyValueStore): Promise<GameState | null> {
