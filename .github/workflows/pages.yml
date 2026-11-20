@@ -45,6 +45,7 @@ jobs:
           git commit -m "Publish the web export"
           git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:gh-pages
       - name: Point Pages at the export
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -64,10 +65,23 @@ jobs:
           EOF
           branch_status=$?
           echo "workflow_put=$workflow_status branch_put=$branch_status"
-          if [ "$branch_status" -ne 0 ]; then
-            exit 1
+          echo "Pages source was not changed. The export on the main root is what this repository serves."
+      - name: Publish the export on main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp dist/index.html dist/favicon.ico dist/metadata.json dist/.nojekyll .
+          rm -rf _expo
+          cp -a dist/_expo .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html favicon.ico metadata.json .nojekyll _expo
+          if git diff --cached --quiet; then
+            echo "export unchanged"
+            exit 0
           fi
-          echo "pages_source=gh-pages" >> "$GITHUB_ENV"
+          git commit -m "Publish the web export [skip ci]"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
       - name: Upload the site
         if: env.pages_source == 'workflow'
         uses: actions/upload-pages-artifact@v3
