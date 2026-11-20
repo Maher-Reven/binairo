@@ -80,3 +80,10 @@ export function awardCompletion(state: StreakState, size: number, today: string)
 export function chargeHint(points: number, tier: Tier): number {
   return Math.max(0, points - hintCost(tier));
 }
+
+/** The tier picker and the coach use the same words for this count. */
+export function dailyStreakLabel(streak: number): string {
+  const days = Math.max(0, Math.floor(streak));
+  const unit = days === 1 ? "day" : "days";
+  return `Daily streak: ${days} ${unit}`;
+}

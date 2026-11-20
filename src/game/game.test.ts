@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { dailySeed, dailyShareLine } from "../domain/daily";
 import { activeSlot, createGame, reduce } from "./reduce";
 import { dailyPuzzle } from "./puzzles";
-import type { PuzzleView } from "./types";
+import type { GameState, PuzzleView } from "./types";
 import { hydrate, memoryStore, saveGame, serialize } from "../persistence/storage";
 import { loadGame } from "../persistence/storage";
 
@@ -452,4 +452,58 @@ describe("daily board", () => {
     expect(older?.daily).toBeNull();
     expect(older?.campaign.grid[0][2]).toBe(0);
   });
+
+  it("counts a daily finish and a tier finish as one streak, and keeps the boards", () => {
+    const junior = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: "2026-11-18" });
+    const mediumPuzzle = linePuzzle("medium");
+    mediumPuzzle.id = "streak-medium";
+    const medium = reduce(junior, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle: mediumPuzzle, campaignIndex: 4 },
+    });
+    const mediumWon = winLine(medium, "2026-11-19");
+    expect(mediumWon.dailyStreak).toBe(1);
+    expect(mediumWon.lastCompletionDay).toBe("2026-11-19");
+    expect(mediumWon.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+
+    const shared = linePuzzle();
+    shared.id = "streak-daily";
+    const dailyWon = winLine(reduce(mediumWon, { type: "play-daily", day: "2026-11-20", puzzle: shared }), "2026-11-20");
+    expect(dailyWon.dailyStreak).toBe(2);
+    expect(dailyWon.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(dailyWon.campaign.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
+
+    const advancedPuzzle = linePuzzle("advanced");
+    advancedPuzzle.id = "streak-advanced";
+    const sameDay = winLine(
+      reduce(dailyWon, {
+        type: "choose-tier",
+        tier: "advanced",
+        fresh: { mode: "campaign", puzzle: advancedPuzzle, campaignIndex: 9 },
+      }),
+      "2026-11-20",
+    );
+    expect(sameDay.dailyStreak).toBe(2);
+    expect(sameDay.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(sameDay.savedTiers.medium?.campaign.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
+    expect(sameDay.daily?.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
+    expect(sameDay.daily?.won).toBe(true);
+
+    const later = linePuzzle();
+    later.id = "streak-later";
+    const afterGap = winLine(reduce(sameDay, { type: "new-practice", puzzle: later }), "2026-11-22");
+    expect(afterGap.dailyStreak).toBe(1);
+    expect(afterGap.lastCompletionDay).toBe("2026-11-22");
+    expect(afterGap.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(afterGap.savedTiers.medium?.campaign.grid[0][2]).toBe(0);
+    expect(afterGap.daily?.won).toBe(true);
+  });
 });
+
+function winLine(state: GameState, today: string) {
+  const withZero = reduce(state, { type: "select", tool: 0 });
+  const first = reduce(withZero, { type: "tap", row: 0, col: 2, today });
+  const withOne = reduce(first, { type: "select", tool: 1 });
+  return reduce(withOne, { type: "tap", row: 0, col: 3, today });
+}

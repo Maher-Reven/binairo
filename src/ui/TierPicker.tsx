@@ -1,6 +1,6 @@
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { TIER_ORDER, tierLabel, tierSizeLabel, tierStart } from "../domain/campaign";
-import { hintCost } from "../domain/scoring";
+import { dailyStreakLabel, hintCost } from "../domain/scoring";
 import type { Tier } from "../domain/types";
 import { pressable, sans, serif, theme } from "./theme";
 
@@ -9,13 +9,24 @@ interface TierPickerProps {
   error: string | null;
   continued: readonly Tier[];
   dailyStatus: "fresh" | "playing" | "won";
+  dailyStreak: number;
   canBack: boolean;
   onPick: (tier: Tier) => void;
   onDaily: () => void;
   onBack: () => void;
 }
 
-export function TierPicker({ busy, error, continued, dailyStatus, canBack, onPick, onDaily, onBack }: TierPickerProps) {
+export function TierPicker({
+  busy,
+  error,
+  continued,
+  dailyStatus,
+  dailyStreak,
+  canBack,
+  onPick,
+  onDaily,
+  onBack,
+}: TierPickerProps) {
   const { width } = useWindowDimensions();
   const wide = width >= 720;
   return (
@@ -26,6 +37,10 @@ export function TierPicker({ busy, error, continued, dailyStatus, canBack, onPic
       <Text style={styles.wordmark}>Binairo</Text>
       <Text style={styles.title}>Choose a tier</Text>
       <Text style={styles.lead}>Each tier keeps its board. The daily board is separate. Points and streaks stay with you.</Text>
+      <View accessibilityRole="text" accessibilityLabel={dailyStreakLabel(dailyStreak)} style={styles.streak}>
+        <Text style={styles.streakName}>Daily streak</Text>
+        <Text style={styles.streakValue}>{Math.max(0, Math.floor(dailyStreak))}</Text>
+      </View>
       <View style={styles.list}>
         <DailyCard status={dailyStatus} busy={busy} onDaily={onDaily} />
         {TIER_ORDER.map((tier) => (
@@ -156,7 +171,30 @@ const styles = StyleSheet.create({
     color: theme.inkSoft,
     fontSize: 16,
     lineHeight: 22,
+  },
+  streak: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    backgroundColor: theme.white,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.line,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 4,
     marginBottom: 8,
+  },
+  streakName: {
+    fontFamily: serif,
+    color: theme.ink,
+    fontSize: 22,
+  },
+  streakValue: {
+    fontFamily: serif,
+    color: theme.gold,
+    fontSize: 28,
+    fontVariant: ["tabular-nums"],
   },
   list: {
     gap: 10,

@@ -22,6 +22,7 @@ export {
   awardCompletion,
   chargeHint,
   completionPoints,
+  dailyStreakLabel,
   hintCost,
   HINT_COSTS,
   isNextLocalDay,
