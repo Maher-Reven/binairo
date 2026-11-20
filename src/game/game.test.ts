@@ -134,6 +134,42 @@ describe("play", () => {
     expect(activeSlot(back).grid[0][2]).toBe(0);
   });
 
+  it("starts a chosen tier at its lesson and keeps points and streaks", () => {
+    const won = playToWin();
+    const puzzle = linePuzzle("medium");
+    puzzle.id = "grid8";
+    const next = reduce(won, { type: "start-tier", mode: "campaign", puzzle, campaignIndex: 4 });
+    expect(next.points).toBe(66);
+    expect(next.puzzleStreak).toBe(1);
+    expect(next.dailyStreak).toBe(1);
+    expect(next.lastCompletionDay).toBe(TODAY);
+    expect(next.mode).toBe("campaign");
+    expect(next.campaignIndex).toBe(4);
+    expect(next.campaign.puzzle).toBe(puzzle);
+    expect(next.campaign.won).toBe(false);
+    expect(next.campaign.grid).toEqual(puzzle.givens);
+    expect(next.practice).toBeNull();
+    expect(next.undo).toEqual([]);
+    expect(next.coachLine).toBe("");
+  });
+
+  it("starts practice at the given board and keeps the campaign and the economy", () => {
+    const won = playToWin();
+    const puzzle = linePuzzle("advanced");
+    puzzle.id = "practice-advanced";
+    const next = reduce(won, { type: "start-tier", mode: "practice", puzzle });
+    expect(next.mode).toBe("practice");
+    expect(next.points).toBe(66);
+    expect(next.puzzleStreak).toBe(1);
+    expect(next.dailyStreak).toBe(1);
+    expect(next.campaignIndex).toBe(won.campaignIndex);
+    expect(next.campaign).toEqual(won.campaign);
+    expect(activeSlot(next).puzzle).toBe(puzzle);
+    expect(activeSlot(next).grid).toEqual(puzzle.givens);
+    expect(activeSlot(next).won).toBe(false);
+    expect(next.undo).toEqual([]);
+  });
+
   it("rejects a copied row", () => {
     const puzzle: PuzzleView = {
       id: "copy",

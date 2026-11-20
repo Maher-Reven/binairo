@@ -76,11 +76,69 @@ export function lessonAt(index: number): Lesson {
   return LESSONS[clamped];
 }
 
+export const TIER_ORDER: readonly Tier[] = ["junior", "medium", "intermediate", "advanced"];
+
+/** Square sizes, smallest first. Junior also teaches on a line before 4×4. */
+export const TIER_SIZES: Record<Tier, readonly number[]> = {
+  junior: [4, 6],
+  medium: [8, 10],
+  intermediate: [12, 14, 16],
+  advanced: [18, 20, 24],
+};
+
 export function tierLabel(tier: Tier): string {
   if (tier === "junior") return "Junior";
   if (tier === "medium") return "Medium";
   if (tier === "intermediate") return "Intermediate";
   return "Advanced";
+}
+
+export function tierSizeLabel(tier: Tier): string {
+  if (tier === "junior") return "A line, then 4×4 and 6×6";
+  const labels = TIER_SIZES[tier].map((size) => `${size}×${size}`);
+  if (labels.length <= 1) return labels[0] ?? "";
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+}
+
+export function firstLessonIndex(tier: Tier, lessons: readonly { tier: Tier }[] = LESSONS): number | null {
+  const index = lessons.findIndex((lesson) => lesson.tier === tier);
+  return index < 0 ? null : index;
+}
+
+export interface CampaignTierStart {
+  kind: "campaign";
+  tier: Tier;
+  campaignIndex: number;
+}
+
+export interface PracticeTierStart {
+  kind: "practice";
+  tier: Tier;
+  shape: "grid";
+  size: number;
+  rules: readonly RuleId[];
+}
+
+export type TierStart = CampaignTierStart | PracticeTierStart;
+
+/**
+ * Junior starts at the first lesson of that tier.
+ * Medium, intermediate, and advanced start at their first campaign lesson
+ * when one exists, and otherwise on a practice board of the smallest size.
+ */
+export function tierStart(tier: Tier, lessons: readonly { tier: Tier }[] = LESSONS): TierStart {
+  const campaignIndex = firstLessonIndex(tier, lessons);
+  if (tier === "junior" || campaignIndex != null) {
+    return { kind: "campaign", tier, campaignIndex: campaignIndex ?? 0 };
+  }
+  return {
+    kind: "practice",
+    tier,
+    shape: "grid",
+    size: TIER_SIZES[tier][0],
+    rules: ALL,
+  };
 }
 
 export function sizeLabel(shape: BoardShape, size: number): string {

@@ -9,9 +9,10 @@ interface CoachProps {
   state: GameState;
   slot: BoardSlot;
   onMode: (mode: "campaign" | "practice") => void;
+  onChangeTier: () => void;
 }
 
-export function Coach({ state, slot, onMode }: CoachProps) {
+export function Coach({ state, slot, onMode, onChangeTier }: CoachProps) {
   const { puzzle } = slot;
   const where =
     state.mode === "campaign"
@@ -53,6 +54,9 @@ export function Coach({ state, slot, onMode }: CoachProps) {
       <Text style={styles.cost}>
         {cost === 0 ? "Hints are free on this tier." : `A hint costs ${cost} points. Costs are provisional.`}
       </Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Change tier" onPress={onChangeTier} style={pressable}>
+        <Text style={styles.change}>Change tier</Text>
+      </Pressable>
     </View>
   );
 }
@@ -161,5 +165,13 @@ const styles = StyleSheet.create({
     color: theme.coachMuted,
     fontSize: 12,
     marginTop: 2,
+  },
+  change: {
+    fontFamily: sans,
+    color: theme.gold,
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 4,
+    minHeight: 32,
   },
 });

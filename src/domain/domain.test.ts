@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LESSONS } from "./campaign";
+import { LESSONS, TIER_SIZES, tierSizeLabel, tierStart } from "./campaign";
 import { countSolutions } from "./counting";
 import { generatePuzzle } from "./generator";
 import { cloneGrid } from "./grid";
@@ -225,6 +225,37 @@ describe("campaign and scoring", () => {
     expect(hintCost("medium")).toBe(10);
     expect(hintCost("intermediate")).toBe(25);
     expect(hintCost("advanced")).toBe(40);
+    expect(TIER_SIZES).toEqual({
+      junior: [4, 6],
+      medium: [8, 10],
+      intermediate: [12, 14, 16],
+      advanced: [18, 20, 24],
+    });
+  });
+
+  it("starts junior at its first lesson, and a later tier at a lesson when one exists", () => {
+    expect(tierStart("junior")).toEqual({ kind: "campaign", tier: "junior", campaignIndex: 0 });
+    expect(tierStart("medium")).toEqual({ kind: "campaign", tier: "medium", campaignIndex: 4 });
+    expect(tierStart("intermediate")).toEqual({ kind: "campaign", tier: "intermediate", campaignIndex: 6 });
+    expect(tierStart("advanced")).toEqual({ kind: "campaign", tier: "advanced", campaignIndex: 9 });
+    expect(tierSizeLabel("junior")).toBe("A line, then 4×4 and 6×6");
+    expect(tierSizeLabel("medium")).toBe("8×8 and 10×10");
+    expect(tierSizeLabel("intermediate")).toBe("12×12, 14×14, and 16×16");
+    expect(tierSizeLabel("advanced")).toBe("18×18, 20×20, and 24×24");
+  });
+
+  it("starts medium and above in practice at the smallest size when that tier has no lesson", () => {
+    const juniorOnly = LESSONS.filter((lesson) => lesson.tier === "junior");
+    expect(tierStart("junior", [])).toEqual({ kind: "campaign", tier: "junior", campaignIndex: 0 });
+    expect(tierStart("medium", juniorOnly)).toEqual({
+      kind: "practice",
+      tier: "medium",
+      shape: "grid",
+      size: 8,
+      rules: ["no-triple", "balance", "unique"],
+    });
+    expect(tierStart("intermediate", juniorOnly)).toMatchObject({ kind: "practice", size: 12 });
+    expect(tierStart("advanced", juniorOnly)).toMatchObject({ kind: "practice", size: 18, shape: "grid" });
   });
 
   it("scores from the streak after it increments, and caps the bonus", () => {

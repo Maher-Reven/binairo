@@ -122,9 +122,32 @@ export function reduce(state: GameState, action: Action): GameState {
         undo: [],
         coachLine: "",
       };
+    case "start-tier":
+      return startTier(state, action);
     default:
       return state;
   }
+}
+
+function startTier(state: GameState, action: Extract<Action, { type: "start-tier" }>): GameState {
+  if (action.mode === "campaign") {
+    return {
+      ...state,
+      mode: "campaign",
+      campaignIndex: action.campaignIndex,
+      campaign: freshSlot(action.puzzle),
+      practice: null,
+      undo: [],
+      coachLine: "",
+    };
+  }
+  return {
+    ...state,
+    mode: "practice",
+    practice: freshSlot(action.puzzle),
+    undo: [],
+    coachLine: "",
+  };
 }
 
 function tap(state: GameState, row: number, col: number, today: string): GameState {

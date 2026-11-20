@@ -27,5 +27,16 @@ export {
   localDay,
 } from "./scoring";
 export type { CompletionAward, StreakState } from "./scoring";
-export { LESSONS, lessonAt, lessonCount, sizeLabel, tierLabel } from "./campaign";
-export type { Lesson } from "./campaign";
+export {
+  LESSONS,
+  TIER_ORDER,
+  TIER_SIZES,
+  firstLessonIndex,
+  lessonAt,
+  lessonCount,
+  sizeLabel,
+  tierLabel,
+  tierSizeLabel,
+  tierStart,
+} from "./campaign";
+export type { Lesson, TierStart } from "./campaign";
