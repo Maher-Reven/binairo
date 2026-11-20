@@ -1,24 +1,38 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { lessonCount, sizeLabel, tierLabel } from "../domain/campaign";
+import { dailyShareLine } from "../domain/daily";
 import { hintCost } from "../domain/scoring";
-import type { GameState } from "../game/types";
-import type { BoardSlot } from "../game/types";
+import type { BoardSlot, GameState } from "../game/types";
 import { pressable, sans, serif, theme } from "./theme";
 
 interface CoachProps {
   state: GameState;
   slot: BoardSlot;
+  elapsedLabel: string;
+  shareNote: string | null;
   onMode: (mode: "campaign" | "practice") => void;
   onBack: () => void;
+  onShare: (line: string) => void;
 }
 
-export function Coach({ state, slot, onMode, onBack }: CoachProps) {
+export function Coach({ state, slot, elapsedLabel, shareNote, onMode, onBack, onShare }: CoachProps) {
   const { puzzle } = slot;
-  const where =
-    state.mode === "campaign"
+  const daily = state.surface === "daily" && state.daily ? state.daily : null;
+  const where = daily
+    ? `Today · ${sizeLabel(puzzle.shape, puzzle.size)}${daily.won ? "" : ` · ${elapsedLabel}`}`
+    : state.mode === "campaign"
       ? `Lesson ${state.campaignIndex + 1} of ${lessonCount()} · ${sizeLabel(puzzle.shape, puzzle.size)}`
       : `Practice · ${sizeLabel(puzzle.shape, puzzle.size)}`;
   const cost = hintCost(puzzle.tier);
+  const event = daily ? daily.coachLine : state.coachLine;
+  const shareLine = daily?.won
+    ? dailyShareLine({
+        day: daily.day,
+        elapsedMs: daily.elapsedMs,
+        hintsUsed: daily.hintsUsed,
+        clean: daily.clean,
+      })
+    : null;
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -27,29 +41,47 @@ export function Coach({ state, slot, onMode, onBack }: CoachProps) {
           <Text style={styles.back}>Back</Text>
         </Pressable>
       </View>
-      <View style={styles.modes}>
-        <ModeButton label="Campaign" active={state.mode === "campaign"} onPress={() => onMode("campaign")} />
-        <ModeButton label="Practice" active={state.mode === "practice"} onPress={() => onMode("practice")} />
-      </View>
-      <Text style={styles.kicker}>{tierLabel(puzzle.tier)}</Text>
+      {daily ? null : (
+        <View style={styles.modes}>
+          <ModeButton label="Campaign" active={state.mode === "campaign"} onPress={() => onMode("campaign")} />
+          <ModeButton label="Practice" active={state.mode === "practice"} onPress={() => onMode("practice")} />
+        </View>
+      )}
+      <Text style={styles.kicker}>{daily ? "Daily" : tierLabel(puzzle.tier)}</Text>
       <Text style={styles.where}>{where}</Text>
       <Text style={styles.teach}>{puzzle.teach}</Text>
-      {state.coachLine ? (
+      {event ? (
         <Text
           style={[
             styles.event,
-            state.coachLine.startsWith("no-triple") ||
-            state.coachLine.startsWith("balance") ||
-            state.coachLine.startsWith("unique") ||
-            state.coachLine.startsWith("A hint costs")
+            event.startsWith("no-triple") ||
+            event.startsWith("balance") ||
+            event.startsWith("unique") ||
+            event.startsWith("A hint costs")
               ? styles.danger
-              : state.coachLine.startsWith("Solved") || state.coachLine.includes("Solved.")
+              : event.startsWith("Solved") || event.includes("Solved.")
                 ? styles.good
                 : null,
           ]}
         >
-          {state.coachLine}
+          {event}
         </Text>
+      ) : null}
+      {shareLine ? (
+        <View style={styles.shareBlock}>
+          <Text selectable style={styles.shareLine}>
+            {shareLine}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share today's result"
+            onPress={() => onShare(shareLine)}
+            style={pressable}
+          >
+            <Text style={styles.shareButton}>Share</Text>
+          </Pressable>
+          {shareNote ? <Text style={styles.shareNote}>{shareNote}</Text> : null}
+        </View>
       ) : null}
       <View style={styles.stats}>
         <Stat label="Points" value={String(state.points)} />
@@ -57,7 +89,11 @@ export function Coach({ state, slot, onMode, onBack }: CoachProps) {
         <Stat label="Daily streak" value={String(state.dailyStreak)} />
       </View>
       <Text style={styles.cost}>
-        {cost === 0 ? "Hints are free on this tier." : `A hint costs ${cost} points. Costs are provisional.`}
+        {daily
+          ? "Hints are free on the daily board."
+          : cost === 0
+            ? "Hints are free on this tier."
+            : `A hint costs ${cost} points. Costs are provisional.`}
       </Text>
     </View>
   );
@@ -179,5 +215,27 @@ const styles = StyleSheet.create({
     color: theme.coachMuted,
     fontSize: 12,
     marginTop: 2,
+  },
+  shareBlock: {
+    gap: 4,
+    marginTop: 4,
+  },
+  shareLine: {
+    fontFamily: sans,
+    color: theme.coachText,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  shareButton: {
+    fontFamily: sans,
+    color: theme.gold,
+    fontSize: 15,
+    fontWeight: "700",
+    minHeight: 32,
+  },
+  shareNote: {
+    fontFamily: sans,
+    color: theme.coachMuted,
+    fontSize: 13,
   },
 });

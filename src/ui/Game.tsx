@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { TIER_ORDER, tierStart } from "../domain/campaign";
+import { formatElapsed } from "../domain/daily";
 import type { Tier } from "../domain/types";
-import { campaignPuzzle, hasNextLesson, newPracticePuzzle, practicePuzzle, practicePuzzleAt } from "../game/puzzles";
+import { campaignPuzzle, dailyPuzzle, hasNextLesson, newPracticePuzzle, practicePuzzle, practicePuzzleAt } from "../game/puzzles";
 import { activeSlot, createGame, createPracticeGame, reduce } from "../game/reduce";
-import type { GameState } from "../game/types";
+import type { Action, GameState } from "../game/types";
 import { loadGame, saveGame, todayFrom, type KeyValueStore } from "../persistence/storage";
 import { Board } from "./Board";
 import { BoardViewport } from "./BoardViewport";
 import { Coach } from "./Coach";
 import { Pad } from "./Pad";
+import { shareResult } from "./shareResult";
 import { TierPicker } from "./TierPicker";
 import { MAX_CELL, MIN_CELL, baseCell, clampCell, sans, theme } from "./theme";
 
@@ -24,6 +26,8 @@ export function Game({ storage }: GameProps) {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cell, setCell] = useState(MIN_CELL);
+  const [tick, setTick] = useState(0);
+  const [shareNote, setShareNote] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const wide = width >= 880;
 
@@ -53,6 +57,49 @@ export function Game({ storage }: GameProps) {
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  const liveOrigin = useRef<number | null>(null);
+  const clockDay =
+    state != null && state.surface === "daily" && state.daily != null && !state.daily.won && !picking
+      ? state.daily.day
+      : "";
+  const clocking = clockDay !== "";
+
+  const bankOpenDaily = (current: GameState): GameState => {
+    const started = liveOrigin.current;
+    if (started == null || current.surface !== "daily" || !current.daily || current.daily.won) return current;
+    const ms = Date.now() - started;
+    liveOrigin.current = Date.now();
+    if (ms < 1) return current;
+    return reduce(current, { type: "bank-daily", ms: Math.floor(ms) });
+  };
+  useEffect(() => {
+    if (!clocking) return;
+    liveOrigin.current = Date.now();
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    const onAppState = (next: string) => {
+      if (next === "active") {
+        liveOrigin.current = Date.now();
+        setTick((n) => n + 1);
+        return;
+      }
+      const started = liveOrigin.current;
+      liveOrigin.current = null;
+      if (started == null) return;
+      const ms = Date.now() - started;
+      setState((current) => (current ? bankDaily(current, clockDay, ms) : current));
+    };
+    const sub = AppState.addEventListener("change", onAppState);
+    return () => {
+      clearInterval(id);
+      sub.remove();
+      const started = liveOrigin.current;
+      liveOrigin.current = null;
+      if (started == null) return;
+      const ms = Date.now() - started;
+      setState((current) => (current ? bankDaily(current, clockDay, ms) : current));
+    };
+  }, [clocking, clockDay]);
+
   const pane = wide ? Math.max(320, width - 420) : Math.max(280, width - 24);
   const puzzleKey = state ? `${state.mode}:${activeSlot(state).puzzle.id}:${activeSlot(state).puzzle.seed}` : "";
   useEffect(() => {
@@ -69,33 +116,40 @@ export function Game({ storage }: GameProps) {
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
           event.preventDefault();
-          setState((current) => (current ? reduce(current, { type: "undo" }) : current));
+          play({ type: "undo" });
         }
         return;
       }
       if (event.key === "0" || event.key === "1") {
-        setState((current) => (current ? reduce(current, { type: "select", tool: event.key === "0" ? 0 : 1 }) : current));
+        play({ type: "select", tool: event.key === "0" ? 0 : 1 });
       } else if (event.key === "Backspace" || event.key === "x") {
-        setState((current) => (current ? reduce(current, { type: "select", tool: "erase" }) : current));
+        play({ type: "select", tool: "erase" });
       } else if (event.key === "h") {
-        setState((current) => (current ? reduce(current, { type: "hint", today: todayFrom() }) : current));
+        play({ type: "hint", today: todayFrom() });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [playing]);
 
+  const play = (action: Action) => {
+    setState((current) => {
+      if (!current) return current;
+      return reduce(bankOpenDaily(current), action);
+    });
+  };
+
   const chooseTier = (tier: Tier) => {
     if (busy) return;
     const current = stateRef.current;
-    if (current?.tier === tier) {
+    if (current && current.tier === tier && current.surface !== "daily") {
       setPickerError(null);
       setPicking(false);
       return;
     }
-    if (current?.savedTiers[tier]) {
+    if (current && (current.savedTiers[tier] || current.tier === tier)) {
       setPickerError(null);
-      setState(reduce(current, { type: "choose-tier", tier }));
+      setState(reduce(bankOpenDaily(current), { type: "choose-tier", tier }));
       setPicking(false);
       return;
     }
@@ -109,14 +163,42 @@ export function Game({ storage }: GameProps) {
         if (start.kind === "campaign") {
           const puzzle = campaignPuzzle(start.campaignIndex);
           const fresh = { mode: "campaign" as const, puzzle, campaignIndex: start.campaignIndex };
-          next = latest ? reduce(latest, { type: "choose-tier", tier, fresh }) : createGame(puzzle, start.campaignIndex);
+          next = latest ? reduce(bankOpenDaily(latest), { type: "choose-tier", tier, fresh }) : createGame(puzzle, start.campaignIndex);
         } else {
           const puzzle = practicePuzzleAt(start.tier, start.shape, start.size, start.rules, Date.now() >>> 0);
           const campaign = campaignPuzzle(0);
           const fresh = { mode: "practice" as const, puzzle, campaign, campaignIndex: 0 };
-          next = latest ? reduce(latest, { type: "choose-tier", tier, fresh }) : createPracticeGame(puzzle, campaign, 0);
+          next = latest ? reduce(bankOpenDaily(latest), { type: "choose-tier", tier, fresh }) : createPracticeGame(puzzle, campaign, 0);
         }
         setState(next);
+        setPicking(false);
+      } catch {
+        setPickerError("Could not build a board. Try again.");
+      } finally {
+        setBusy(false);
+      }
+    }, 30);
+  };
+
+  const openDaily = () => {
+    if (busy) return;
+    const day = todayFrom();
+    const current = stateRef.current;
+    if (current?.daily?.day === day) {
+      setPickerError(null);
+      setState(reduce(bankOpenDaily(current), { type: "play-daily", day }));
+      setPicking(false);
+      return;
+    }
+    setBusy(true);
+    setPickerError(null);
+    setTimeout(() => {
+      const latest = stateRef.current;
+      try {
+        const puzzle = dailyPuzzle(day);
+        const shell = latest ?? createGame(campaignPuzzle(0));
+        const banked = latest ? bankOpenDaily(shell) : shell;
+        setState(reduce(banked, { type: "play-daily", day, puzzle }));
         setPicking(false);
       } catch {
         setPickerError("Could not build a board. Try again.");
@@ -147,8 +229,10 @@ export function Game({ storage }: GameProps) {
         busy={busy}
         error={pickerError}
         continued={continuedTiers(state)}
+        dailyStatus={dailyStatus(state)}
         canBack={state != null}
         onPick={chooseTier}
+        onDaily={openDaily}
         onBack={() => {
           if (!busy) setPicking(false);
         }}
@@ -157,10 +241,14 @@ export function Game({ storage }: GameProps) {
   }
 
   const slot = activeSlot(state);
-  const nextReady = state.mode === "campaign" && slot.won && hasNextLesson(state.campaignIndex);
-  const campaignDone = state.mode === "campaign" && slot.won && !hasNextLesson(state.campaignIndex);
+  const onDaily = state.surface === "daily";
+  const nextReady = !onDaily && state.mode === "campaign" && slot.won && hasNextLesson(state.campaignIndex);
+  const campaignDone = !onDaily && state.mode === "campaign" && slot.won && !hasNextLesson(state.campaignIndex);
   const primaryLabel =
-    state.mode === "practice" ? "New board" : nextReady ? "Next lesson" : campaignDone ? "Campaign complete" : null;
+    onDaily ? null : state.mode === "practice" ? "New board" : nextReady ? "Next lesson" : campaignDone ? "Campaign complete" : null;
+  const liveMs =
+    clocking && tick >= 0 && liveOrigin.current != null ? Math.max(0, Date.now() - liveOrigin.current) : 0;
+  const elapsedLabel = formatElapsed((state.daily?.elapsedMs ?? 0) + liveMs);
 
   const build = (make: (current: GameState) => GameState) => {
     setBusy(true);
@@ -197,7 +285,7 @@ export function Game({ storage }: GameProps) {
   };
 
   const onMode = (mode: "campaign" | "practice") => {
-    if (busy || mode === state.mode) return;
+    if (busy || state.surface === "daily" || mode === state.mode) return;
     if (mode === "campaign") {
       setState((current) => (current ? reduce(current, { type: "switch-campaign" }) : current));
       return;
@@ -217,24 +305,35 @@ export function Game({ storage }: GameProps) {
     <Coach
       state={state}
       slot={slot}
+      elapsedLabel={elapsedLabel}
+      shareNote={shareNote}
       onMode={onMode}
       onBack={backToPicker}
+      onShare={(line) => {
+        shareResult(line)
+          .then((outcome) => {
+            if (outcome === "copied") setShareNote("Copied.");
+            else if (outcome === "shared") setShareNote("Shared.");
+            else setShareNote(null);
+          })
+          .catch(() => setShareNote("Could not share that line."));
+      }}
     />
   );
   const pad = (
     <Pad
       selected={state.selected}
       tier={slot.puzzle.tier}
-      canUndo={state.undo.length > 0}
+      canUndo={onDaily ? (state.daily?.undo.length ?? 0) > 0 : state.undo.length > 0}
       canHint={!slot.won}
       canReset
       primaryLabel={primaryLabel}
       primaryDisabled={campaignDone}
       busy={busy}
-      onSelect={(tool) => setState((current) => (current ? reduce(current, { type: "select", tool }) : current))}
-      onUndo={() => setState((current) => (current ? reduce(current, { type: "undo" }) : current))}
-      onHint={() => setState((current) => (current ? reduce(current, { type: "hint", today: todayFrom() }) : current))}
-      onReset={() => setState((current) => (current ? reduce(current, { type: "reset" }) : current))}
+      onSelect={(tool) => play({ type: "select", tool })}
+      onUndo={() => play({ type: "undo" })}
+      onHint={() => play({ type: "hint", today: todayFrom() })}
+      onReset={() => play({ type: "reset" })}
       onPrimary={onPrimary}
       onZoomIn={() => setCell((size) => clampCell(Math.min(MAX_CELL, size + 4)))}
       onZoomOut={() => setCell((size) => clampCell(Math.max(MIN_CELL, size - 4)))}
@@ -248,9 +347,7 @@ export function Game({ storage }: GameProps) {
         givens={slot.puzzle.givens}
         cellSize={cell}
         disabled={slot.won || busy}
-        onTap={(row, col) =>
-          setState((current) => (current ? reduce(current, { type: "tap", row, col, today: todayFrom() }) : current))
-        }
+        onTap={(row, col) => play({ type: "tap", row, col, today: todayFrom() })}
       />
     </BoardViewport>
   );
@@ -283,6 +380,17 @@ function continuedTiers(state: GameState | null): readonly Tier[] {
     if (state.savedTiers[tier]) found.add(tier);
   }
   return TIER_ORDER.filter((tier) => found.has(tier));
+}
+
+function dailyStatus(state: GameState | null): "fresh" | "playing" | "won" {
+  const today = todayFrom();
+  if (!state?.daily || state.daily.day !== today) return "fresh";
+  return state.daily.won ? "won" : "playing";
+}
+
+function bankDaily(current: GameState, day: string, ms: number): GameState {
+  if (ms < 1 || current.surface !== "daily" || current.daily?.day !== day || current.daily.won) return current;
+  return reduce(current, { type: "bank-daily", ms: Math.floor(ms) });
 }
 
 const styles = StyleSheet.create({

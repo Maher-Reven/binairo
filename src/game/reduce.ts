@@ -4,11 +4,24 @@ import { awardCompletion, chargeHint, hintCost } from "../domain/scoring";
 import { findHint, techniqueLabel } from "../domain/techniques";
 import type { Grid, Tier } from "../domain/types";
 import { snapshotTier } from "./snapshot";
-import type { Action, BoardSlot, FreshTier, GameState, PuzzleView, TierSnapshot, UndoFrame } from "./types";
+import type {
+  Action,
+  BoardSlot,
+  DailyBoard,
+  DailyUndo,
+  FreshTier,
+  GameState,
+  PuzzleView,
+  TierSnapshot,
+  UndoFrame,
+} from "./types";
 
 const UNDO_LIMIT = 200;
 
 export function activeSlot(state: GameState): BoardSlot {
+  if (state.surface === "daily" && state.daily) {
+    return { puzzle: state.daily.puzzle, grid: state.daily.grid, won: state.daily.won };
+  }
   if (state.mode === "practice" && state.practice) return state.practice;
   return state.campaign;
 }
@@ -28,6 +41,8 @@ export function createGame(campaign: PuzzleView, campaignIndex = 0): GameState {
     campaign: freshSlot(campaign),
     practice: null,
     undo: [],
+    surface: "tier",
+    daily: null,
   };
 }
 
@@ -119,6 +134,7 @@ export function reduce(state: GameState, action: Action): GameState {
     case "switch-practice":
       return switchPractice(state, action.puzzle);
     case "new-practice":
+      if (state.surface === "daily") return state;
       return {
         ...state,
         mode: "practice",
@@ -127,6 +143,7 @@ export function reduce(state: GameState, action: Action): GameState {
         coachLine: "New practice board.",
       };
     case "next-lesson":
+      if (state.surface === "daily") return state;
       return {
         ...state,
         mode: "campaign",
@@ -137,6 +154,10 @@ export function reduce(state: GameState, action: Action): GameState {
       };
     case "choose-tier":
       return chooseTier(state, action.tier, action.fresh);
+    case "play-daily":
+      return playDaily(state, action.day, action.puzzle);
+    case "bank-daily":
+      return bankDaily(state, action.ms);
     default:
       return state;
   }
@@ -148,7 +169,9 @@ export function reduce(state: GameState, action: Action): GameState {
  * Choosing the tier already on screen leaves that board alone.
  */
 function chooseTier(state: GameState, tier: Tier, fresh?: FreshTier): GameState {
-  if (state.tier === tier) return state;
+  if (state.tier === tier) {
+    return state.surface === "tier" ? state : { ...state, surface: "tier" };
+  }
   const existing = state.savedTiers[tier];
   if (!existing && !fresh) return state;
   const savedTiers: Partial<Record<Tier, TierSnapshot>> = {
@@ -186,6 +209,8 @@ function resumeTier(
     campaign: saved.campaign,
     practice: saved.practice,
     undo: ledgerMoved ? [] : saved.undo,
+    surface: "tier",
+    daily: state.daily,
   };
 }
 
@@ -205,6 +230,8 @@ function beginFresh(
     selected: state.selected,
     undo: [] as UndoFrame[],
     coachLine: "",
+    surface: "tier" as const,
+    daily: state.daily,
   };
   if (fresh.mode === "campaign") {
     return {
@@ -225,6 +252,7 @@ function beginFresh(
 }
 
 function tap(state: GameState, row: number, col: number, today: string): GameState {
+  if (state.surface === "daily" && state.daily) return dailyTap(state, state.daily, row, col, today);
   const slot = activeSlot(state);
   if (slot.won) return state;
   const grid = slot.grid;
@@ -245,6 +273,7 @@ function tap(state: GameState, row: number, col: number, today: string): GameSta
 }
 
 function undo(state: GameState): GameState {
+  if (state.surface === "daily" && state.daily) return dailyUndo(state, state.daily);
   const previous = state.undo[state.undo.length - 1];
   if (!previous) return state;
   const slot = activeSlot(state);
@@ -263,6 +292,7 @@ function undo(state: GameState): GameState {
 }
 
 function reset(state: GameState): GameState {
+  if (state.surface === "daily" && state.daily) return dailyReset(state, state.daily);
   const slot = activeSlot(state);
   const started = !gridsEqual(slot.grid, slot.puzzle.givens);
   return commit(state, freshSlot(slot.puzzle), {
@@ -273,6 +303,7 @@ function reset(state: GameState): GameState {
 }
 
 function hint(state: GameState, today: string): GameState {
+  if (state.surface === "daily" && state.daily) return dailyHint(state, state.daily, today);
   const slot = activeSlot(state);
   if (slot.won) return state;
   const force = findHint(slot.grid, slot.puzzle.rules);
@@ -287,12 +318,159 @@ function hint(state: GameState, today: string): GameState {
 }
 
 function switchCampaign(state: GameState): GameState {
+  if (state.surface === "daily") return state;
   if (state.mode === "campaign") return state;
   return { ...state, mode: "campaign", undo: [], coachLine: "" };
 }
 
 function switchPractice(state: GameState, puzzle: PuzzleView): GameState {
+  if (state.surface === "daily") return state;
   if (state.mode === "practice") return state;
   const practice = state.practice ?? freshSlot(puzzle);
   return { ...state, mode: "practice", practice, undo: [], coachLine: "" };
+}
+
+function playDaily(state: GameState, day: string, puzzle?: PuzzleView): GameState {
+  if (state.daily?.day === day) {
+    return state.surface === "daily" ? state : { ...state, surface: "daily" };
+  }
+  if (!puzzle) return state;
+  return {
+    ...state,
+    surface: "daily",
+    daily: {
+      day,
+      puzzle,
+      grid: cloneGrid(puzzle.givens),
+      won: false,
+      elapsedMs: 0,
+      hintsUsed: 0,
+      clean: true,
+      coachLine: "",
+      undo: [],
+    },
+  };
+}
+
+function bankDaily(state: GameState, ms: number): GameState {
+  if (state.surface !== "daily" || !state.daily || state.daily.won) return state;
+  if (!Number.isFinite(ms) || ms < 1) return state;
+  return { ...state, daily: { ...state.daily, elapsedMs: state.daily.elapsedMs + Math.floor(ms) } };
+}
+
+function dailyFrame(state: GameState, daily: DailyBoard): DailyUndo {
+  return {
+    grid: cloneGrid(daily.grid),
+    coachLine: daily.coachLine,
+    points: state.points,
+    puzzleStreak: state.puzzleStreak,
+    dailyStreak: state.dailyStreak,
+    lastCompletionDay: state.lastCompletionDay,
+    won: daily.won,
+    hintsUsed: daily.hintsUsed,
+  };
+}
+
+function pushDaily(state: GameState, daily: DailyBoard, patch: Partial<GameState>): GameState {
+  const before = state.daily;
+  if (!before) return state;
+  const undo = [...before.undo, dailyFrame(state, before)].slice(-UNDO_LIMIT);
+  return { ...state, ...patch, daily: { ...daily, undo } };
+}
+
+function dailyApply(
+  state: GameState,
+  daily: DailyBoard,
+  today: string,
+  coachLine: string,
+  pointsAfterMove: number,
+): GameState {
+  if (!isSolved(daily.grid, daily.puzzle.rules)) {
+    return pushDaily(state, { ...daily, won: false, coachLine }, { points: pointsAfterMove });
+  }
+  const award = awardCompletion(
+    {
+      points: pointsAfterMove,
+      puzzleStreak: state.puzzleStreak,
+      dailyStreak: state.dailyStreak,
+      lastCompletionDay: state.lastCompletionDay,
+    },
+    daily.puzzle.size,
+    today,
+  );
+  const solvedLine = coachLine ? `${coachLine} Solved. +${award.earned} points.` : `Solved. +${award.earned} points.`;
+  return pushDaily(state, { ...daily, won: true, coachLine: solvedLine }, {
+    points: award.points,
+    puzzleStreak: award.puzzleStreak,
+    dailyStreak: award.dailyStreak,
+    lastCompletionDay: award.lastCompletionDay,
+  });
+}
+
+function dailyTap(state: GameState, daily: DailyBoard, row: number, col: number, today: string): GameState {
+  if (daily.won) return state;
+  const grid = daily.grid;
+  if (row < 0 || col < 0 || row >= grid.length || col >= grid[0].length) return state;
+  if (daily.puzzle.givens[row][col] != null) {
+    return { ...state, daily: { ...daily, coachLine: "That cell is given." } };
+  }
+  if (state.selected === "erase") {
+    if (grid[row][col] == null) return state;
+    const next = cloneGrid(grid);
+    next[row][col] = null;
+    return pushDaily(state, { ...daily, grid: next, won: false, coachLine: "" }, {});
+  }
+  if (grid[row][col] === state.selected) return state;
+  const placed = placeDigit(grid, row, col, state.selected, daily.puzzle.rules);
+  if (!placed.ok) {
+    return { ...state, daily: { ...daily, clean: false, coachLine: placed.rejection.message } };
+  }
+  return dailyApply(state, { ...daily, grid: placed.grid }, today, "", state.points);
+}
+
+function dailyUndo(state: GameState, daily: DailyBoard): GameState {
+  const previous = daily.undo[daily.undo.length - 1];
+  if (!previous) return state;
+  return {
+    ...state,
+    points: previous.points,
+    puzzleStreak: previous.puzzleStreak,
+    dailyStreak: previous.dailyStreak,
+    lastCompletionDay: previous.lastCompletionDay,
+    daily: {
+      ...daily,
+      grid: cloneGrid(previous.grid),
+      won: previous.won,
+      hintsUsed: previous.hintsUsed,
+      coachLine: previous.coachLine,
+      undo: daily.undo.slice(0, -1),
+    },
+  };
+}
+
+function dailyReset(state: GameState, daily: DailyBoard): GameState {
+  const started = !gridsEqual(daily.grid, daily.puzzle.givens);
+  return {
+    ...state,
+    puzzleStreak: started ? 0 : state.puzzleStreak,
+    daily: {
+      ...daily,
+      grid: cloneGrid(daily.puzzle.givens),
+      won: false,
+      undo: [],
+      coachLine: started ? "Puzzle streak reset." : "Back to the givens.",
+    },
+  };
+}
+
+function dailyHint(state: GameState, daily: DailyBoard, today: string): GameState {
+  if (daily.won) return state;
+  const force = findHint(daily.grid, daily.puzzle.rules);
+  if (!force) {
+    return { ...state, daily: { ...daily, coachLine: "No forced cell. That hint was free." } };
+  }
+  const placed = placeDigit(daily.grid, force.row, force.col, force.digit, daily.puzzle.rules);
+  if (!placed.ok) return { ...state, daily: { ...daily, coachLine: placed.rejection.message } };
+  const line = `Hint: ${techniqueLabel(force.technique)} places ${force.digit}.`;
+  return dailyApply(state, { ...daily, grid: placed.grid, hintsUsed: daily.hintsUsed + 1 }, today, line, state.points);
 }

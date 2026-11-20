@@ -8,12 +8,14 @@ interface TierPickerProps {
   busy: boolean;
   error: string | null;
   continued: readonly Tier[];
+  dailyStatus: "fresh" | "playing" | "won";
   canBack: boolean;
   onPick: (tier: Tier) => void;
+  onDaily: () => void;
   onBack: () => void;
 }
 
-export function TierPicker({ busy, error, continued, canBack, onPick, onBack }: TierPickerProps) {
+export function TierPicker({ busy, error, continued, dailyStatus, canBack, onPick, onDaily, onBack }: TierPickerProps) {
   const { width } = useWindowDimensions();
   const wide = width >= 720;
   return (
@@ -23,8 +25,9 @@ export function TierPicker({ busy, error, continued, canBack, onPick, onBack }: 
     >
       <Text style={styles.wordmark}>Binairo</Text>
       <Text style={styles.title}>Choose a tier</Text>
-      <Text style={styles.lead}>Each tier keeps its board. Points and streaks stay with you.</Text>
+      <Text style={styles.lead}>Each tier keeps its board. The daily board is separate. Points and streaks stay with you.</Text>
       <View style={styles.list}>
+        <DailyCard status={dailyStatus} busy={busy} onDaily={onDaily} />
         {TIER_ORDER.map((tier) => (
           <TierCard key={tier} tier={tier} continued={continued.includes(tier)} busy={busy} onPick={onPick} />
         ))}
@@ -44,6 +47,38 @@ export function TierPicker({ busy, error, continued, canBack, onPick, onBack }: 
       ) : null}
     </ScrollView>
   );
+}
+
+function DailyCard({
+  status,
+  busy,
+  onDaily,
+}: {
+  status: "fresh" | "playing" | "won";
+  busy: boolean;
+  onDaily: () => void;
+}) {
+  const detail = dailyDetail(status);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Daily. ${detail}`}
+      accessibilityState={{ disabled: busy }}
+      disabled={busy}
+      onPress={onDaily}
+      style={[styles.card, styles.daily, pressable, busy ? styles.dim : null]}
+    >
+      <Text style={styles.name}>Daily</Text>
+      <Text style={styles.sizes}>Today's 6×6</Text>
+      <Text style={styles.detail}>{detail}</Text>
+    </Pressable>
+  );
+}
+
+function dailyDetail(status: "fresh" | "playing" | "won"): string {
+  if (status === "playing") return "Continues today's board. The same board on every device.";
+  if (status === "won") return "Today's result is ready to share. The same board on every device.";
+  return "The same board on every device. Hints are free.";
 }
 
 function TierCard({
@@ -134,6 +169,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 2,
+  },
+  daily: {
+    borderColor: theme.gold,
   },
   name: {
     fontFamily: serif,

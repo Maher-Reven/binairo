@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { dailySeed, dailyShareLine } from "../domain/daily";
 import { activeSlot, createGame, reduce } from "./reduce";
+import { dailyPuzzle } from "./puzzles";
 import type { PuzzleView } from "./types";
 import { hydrate, memoryStore, saveGame, serialize } from "../persistence/storage";
 import { loadGame } from "../persistence/storage";
@@ -318,5 +320,136 @@ describe("persistence", () => {
     expect(loaded?.savedTiers).toEqual({});
     expect(loaded?.campaign.grid[0][2]).toBe(0);
     expect(loaded?.points).toBe(0);
+  });
+});
+
+describe("daily board", () => {
+  it("builds the same board from the date", () => {
+    const first = dailyPuzzle("2026-11-20");
+    const second = dailyPuzzle("2026-11-20");
+    expect(first.seed).toBe(dailySeed("2026-11-20"));
+    expect(first.size).toBe(6);
+    expect(first.rules).toEqual(["no-triple", "balance", "unique"]);
+    expect(second.givens).toEqual(first.givens);
+    expect(second.seed).toBe(first.seed);
+    expect(dailySeed("2026-11-21")).not.toBe(first.seed);
+    const line = dailyShareLine({ day: "2026-11-20", elapsedMs: 125000, hintsUsed: 0, clean: true });
+    for (const row of first.givens) {
+      const digits = row.map((cell) => (cell == null ? "" : String(cell))).join("");
+      if (digits.length >= 3) expect(line.includes(digits)).toBe(false);
+    }
+  }, 30000);
+
+  it("plays beside the tier boards and does not replace them", () => {
+    const junior = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const mediumPuzzle = linePuzzle("medium");
+    mediumPuzzle.id = "grid8";
+    const medium = reduce(junior, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle: mediumPuzzle, campaignIndex: 4 },
+    });
+    const daily = reduce(medium, { type: "play-daily", day: "2026-11-20", puzzle: linePuzzle() });
+    expect(daily.surface).toBe("daily");
+    expect(daily.tier).toBe("medium");
+    expect(daily.campaign.grid).toEqual(medium.campaign.grid);
+    expect(daily.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(daily.undo).toEqual(medium.undo);
+    expect(daily.coachLine).toBe(medium.coachLine);
+
+    const played = reduce(daily, { type: "select", tool: 0 });
+    const moved = reduce(played, { type: "tap", row: 0, col: 2, today: TODAY });
+    expect(moved.daily?.grid[0][2]).toBe(0);
+    expect(moved.daily?.clean).toBe(true);
+    expect(moved.campaign.grid).toEqual(medium.campaign.grid);
+    expect(moved.savedTiers).toEqual(medium.savedTiers);
+    expect(moved.coachLine).toBe(medium.coachLine);
+
+    const rejected = reduce(reduce(daily, { type: "select", tool: 1 }), {
+      type: "tap",
+      row: 0,
+      col: 2,
+      today: TODAY,
+    });
+    expect(rejected.daily?.clean).toBe(false);
+    expect(rejected.daily?.grid[0][2]).toBeNull();
+    expect(rejected.daily?.undo).toHaveLength(0);
+    expect(rejected.coachLine).toBe(medium.coachLine);
+    expect(rejected.campaign.grid).toEqual(medium.campaign.grid);
+
+    const hinted = reduce(reduce(daily, { type: "select", tool: 0 }), { type: "hint", today: TODAY });
+    expect(hinted.daily?.hintsUsed).toBe(1);
+    expect(hinted.daily?.grid[0][2]).toBe(0);
+    expect(hinted.points).toBe(medium.points);
+    expect(hinted.undo).toEqual(medium.undo);
+    const undone = reduce(hinted, { type: "undo" });
+    expect(undone.daily?.hintsUsed).toBe(0);
+    expect(undone.daily?.grid[0][2]).toBeNull();
+    expect(undone.campaign.grid[0]).toEqual(medium.campaign.grid[0]);
+
+    const resumed = reduce(moved, { type: "choose-tier", tier: "medium" });
+    expect(resumed.surface).toBe("tier");
+    expect(activeSlot(resumed).grid).toEqual(medium.campaign.grid);
+    expect(resumed.daily?.grid[0][2]).toBe(0);
+    const sameDay = reduce(resumed, { type: "play-daily", day: "2026-11-20" });
+    expect(sameDay.surface).toBe("daily");
+    expect(sameDay.daily?.grid).toEqual(moved.daily?.grid);
+    expect(sameDay.campaign.grid).toEqual(medium.campaign.grid);
+
+    const other = linePuzzle();
+    other.id = "tomorrow";
+    const tomorrow = reduce(sameDay, { type: "play-daily", day: "2026-11-21", puzzle: other });
+    expect(tomorrow.daily?.day).toBe("2026-11-21");
+    expect(tomorrow.daily?.puzzle.id).toBe("tomorrow");
+    expect(tomorrow.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(tomorrow.campaign.grid).toEqual(medium.campaign.grid);
+
+    const reset = reduce(moved, { type: "reset" });
+    expect(reset.daily?.grid).toEqual(linePuzzle().givens);
+    expect(reset.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(reset.campaign.grid).toEqual(medium.campaign.grid);
+    expect(reset.undo).toEqual(medium.undo);
+  });
+
+  it("shares a finished daily board without the digits", () => {
+    let state = reduce(createGame(linePuzzle()), { type: "play-daily", day: "2026-11-20", puzzle: linePuzzle() });
+    state = reduce(state, { type: "bank-daily", ms: 125000 });
+    state = reduce(state, { type: "tap", row: 0, col: 2, today: TODAY });
+    state = reduce(state, { type: "select", tool: 1 });
+    state = reduce(state, { type: "tap", row: 0, col: 3, today: TODAY });
+    expect(state.daily?.won).toBe(true);
+    expect(state.daily?.clean).toBe(true);
+    expect(state.points).toBe(66);
+    const line = dailyShareLine({
+      day: state.daily!.day,
+      elapsedMs: state.daily!.elapsedMs,
+      hintsUsed: state.daily!.hintsUsed,
+      clean: state.daily!.clean,
+    });
+    expect(line).toBe("Binairo 2026-11-20 · 2:05 · 0 hints · clean");
+    expect(line.includes("110100")).toBe(false);
+    expect(state.campaign.grid).toEqual(linePuzzle().givens);
+  });
+
+  it("round-trips the daily board and still loads a save that has none", async () => {
+    const junior = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const daily = reduce(reduce(junior, { type: "play-daily", day: "2026-11-20", puzzle: linePuzzle() }), {
+      type: "bank-daily",
+      ms: 4000,
+    });
+    const store = memoryStore();
+    await saveGame(store, daily);
+    const loaded = await loadGame(store);
+    expect(loaded).toEqual(daily);
+    expect(loaded?.surface).toBe("daily");
+    expect(loaded?.campaign.grid[0][2]).toBe(0);
+
+    const raw = JSON.parse(serialize(junior)) as { surface?: string; daily?: unknown };
+    delete raw.surface;
+    delete raw.daily;
+    const older = hydrate(JSON.stringify(raw));
+    expect(older?.surface).toBe("tier");
+    expect(older?.daily).toBeNull();
+    expect(older?.campaign.grid[0][2]).toBe(0);
   });
 });
