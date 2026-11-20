@@ -2,7 +2,7 @@ import { cloneGrid } from "../domain/grid";
 import { localDay } from "../domain/scoring";
 import type { Cell, Grid, RuleId, Tier } from "../domain/types";
 import { snapshotTier } from "../game/snapshot";
-import type { BoardSlot, GameState, PuzzleView, TierSnapshot, UndoFrame } from "../game/types";
+import type { BoardSlot, DailyBoard, DailyUndo, GameState, PuzzleView, Surface, TierSnapshot, UndoFrame } from "../game/types";
 
 export interface KeyValueStore {
   getItem(key: string): Promise<string | null>;
@@ -34,6 +34,8 @@ interface SavedProfile {
   lastCompletionDay: string | null;
   tier: Tier;
   tiers: Partial<Record<Tier, TierSnapshot>>;
+  surface: Surface;
+  daily: DailyBoard | null;
 }
 
 export function serialize(state: GameState): string {
@@ -49,6 +51,8 @@ export function serialize(state: GameState): string {
     lastCompletionDay: state.lastCompletionDay,
     tier: state.tier,
     tiers,
+    surface: state.surface,
+    daily: state.daily,
   };
   return JSON.stringify(saved);
 }
@@ -69,7 +73,7 @@ function hydrateLegacy(parsed: Record<string, unknown>): GameState | null {
   const snap = parseSnapshot(parsed);
   if (!snap) return null;
   const tier = snap.mode === "practice" && snap.practice ? snap.practice.puzzle.tier : snap.campaign.puzzle.tier;
-  return gameFrom(snap, tier, {}, economyOf(snap));
+  return gameFrom(snap, tier, {}, economyOf(snap), "tier", null);
 }
 
 function hydrateProfile(parsed: Record<string, unknown>): GameState | null {
@@ -86,7 +90,9 @@ function hydrateProfile(parsed: Record<string, unknown>): GameState | null {
   const live = savedTiers[parsed.tier];
   if (!live) return null;
   delete savedTiers[parsed.tier];
-  return gameFrom(live, parsed.tier, savedTiers, economy);
+  const daily = parseDaily(parsed.daily);
+  const surface: Surface = parsed.surface === "daily" && daily ? "daily" : "tier";
+  return gameFrom(live, parsed.tier, savedTiers, economy, surface, daily);
 }
 
 function gameFrom(
@@ -94,6 +100,8 @@ function gameFrom(
   tier: Tier,
   savedTiers: Partial<Record<Tier, TierSnapshot>>,
   economy: { points: number; puzzleStreak: number; dailyStreak: number; lastCompletionDay: string | null },
+  surface: Surface,
+  daily: DailyBoard | null,
 ): GameState {
   const ledgerMoved =
     snap.points !== economy.points ||
@@ -114,7 +122,66 @@ function gameFrom(
     campaign: snap.campaign,
     practice: snap.practice,
     undo: ledgerMoved ? [] : snap.undo,
+    surface,
+    daily,
   };
+}
+
+function parseDaily(value: unknown): DailyBoard | null {
+  if (value == null || !isRecord(value)) return null;
+  if (typeof value.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.day)) return null;
+  const puzzle = parsePuzzle(value.puzzle);
+  const grid = parseGrid(value.grid);
+  if (!puzzle || !grid || typeof value.won !== "boolean") return null;
+  if (grid.length !== puzzle.givens.length || grid[0].length !== puzzle.givens[0].length) return null;
+  if (typeof value.elapsedMs !== "number" || typeof value.hintsUsed !== "number" || typeof value.clean !== "boolean") {
+    return null;
+  }
+  const undo = parseDailyUndo(value.undo);
+  if (!undo) return null;
+  const restored = cloneGrid(grid);
+  for (let r = 0; r < puzzle.givens.length; r++) {
+    for (let c = 0; c < puzzle.givens[0].length; c++) {
+      const given = puzzle.givens[r][c];
+      if (given != null) restored[r][c] = given;
+    }
+  }
+  return {
+    day: value.day,
+    puzzle,
+    grid: restored,
+    won: value.won,
+    elapsedMs: Math.max(0, Math.floor(value.elapsedMs)),
+    hintsUsed: Math.max(0, Math.floor(value.hintsUsed)),
+    clean: value.clean,
+    coachLine: typeof value.coachLine === "string" ? value.coachLine : "",
+    undo,
+  };
+}
+
+function parseDailyUndo(value: unknown): DailyUndo[] | null {
+  if (!Array.isArray(value)) return null;
+  const frames: DailyUndo[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) return null;
+    const grid = parseGrid(entry.grid);
+    if (!grid || typeof entry.coachLine !== "string" || typeof entry.won !== "boolean") return null;
+    if (typeof entry.points !== "number" || typeof entry.puzzleStreak !== "number") return null;
+    if (typeof entry.dailyStreak !== "number" || typeof entry.hintsUsed !== "number") return null;
+    const last = entry.lastCompletionDay;
+    if (last != null && typeof last !== "string") return null;
+    frames.push({
+      grid,
+      coachLine: entry.coachLine,
+      points: entry.points,
+      puzzleStreak: entry.puzzleStreak,
+      dailyStreak: entry.dailyStreak,
+      lastCompletionDay: last ?? null,
+      won: entry.won,
+      hintsUsed: Math.max(0, Math.floor(entry.hintsUsed)),
+    });
+  }
+  return frames;
 }
 
 function economyOf(snap: TierSnapshot) {

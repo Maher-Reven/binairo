@@ -1,4 +1,5 @@
 import { firstLessonIndex, lessonAt, lessonCount } from "../domain/campaign";
+import { DAILY_RULES, DAILY_SIZE, dailySeed } from "../domain/daily";
 import { generatePuzzle } from "../domain/generator";
 import type { Lesson } from "../domain/campaign";
 import type { BoardShape, RuleId, Tier } from "../domain/types";
@@ -69,4 +70,23 @@ export function newPracticePuzzle(campaignIndex: number, active: PuzzleView, see
 
 export function hasNextLesson(campaignIndex: number): boolean {
   return campaignIndex < lessonCount() - 1;
+}
+
+/**
+ * Today's shared board. `tier` is junior only so a hint stays free.
+ * The screen calls this Daily, not Junior.
+ */
+export function dailyPuzzle(day: string): PuzzleView {
+  const seed = dailySeed(day);
+  const teach = "Today's board. All three rules: no three in a line, an even split, and no repeated row or column.";
+  const lesson: Lesson = {
+    id: `daily-${day}`,
+    tier: "junior",
+    shape: "grid",
+    size: DAILY_SIZE,
+    rules: DAILY_RULES,
+    seed,
+    teach,
+  };
+  return viewFromLesson(lesson, seed, `daily-${day}`, teach);
 }

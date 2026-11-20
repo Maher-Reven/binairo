@@ -17,6 +17,7 @@ export type { SolveResult } from "./techniques";
 export { countSolutions } from "./counting";
 export { generatePuzzle } from "./generator";
 export { mulberry32 } from "./rng";
+export { DAILY_RULES, DAILY_SIZE, dailySeed, dailyShareLine, formatElapsed } from "./daily";
 export {
   awardCompletion,
   chargeHint,

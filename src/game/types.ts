@@ -30,6 +30,36 @@ export interface BoardSlot {
 
 export type Mode = "campaign" | "practice";
 
+export type Surface = "tier" | "daily";
+
+/** Undo for the daily board. It does not restore a rejected placement. */
+export interface DailyUndo {
+  grid: Grid;
+  coachLine: string;
+  points: number;
+  puzzleStreak: number;
+  dailyStreak: number;
+  lastCompletionDay: string | null;
+  won: boolean;
+  hintsUsed: number;
+}
+
+/**
+ * The shared daily board. Kept beside the tier boards, never inside them.
+ * `clean` stays false after a rejected placement. Hints are counted apart from that.
+ */
+export interface DailyBoard {
+  day: string;
+  puzzle: PuzzleView;
+  grid: Grid;
+  won: boolean;
+  elapsedMs: number;
+  hintsUsed: number;
+  clean: boolean;
+  coachLine: string;
+  undo: DailyUndo[];
+}
+
 /** One tier's in-progress play, including the score at the time it was stored. */
 export interface TierSnapshot {
   points: number;
@@ -64,8 +94,12 @@ export interface GameState {
   coachLine: string;
   campaign: BoardSlot;
   practice: BoardSlot | null;
-  /** Valid only for the active mode. Cleared when the mode changes. */
+  /** Valid only for the active tier mode. Cleared when the mode changes. The daily board has its own undo. */
   undo: UndoFrame[];
+  /** Which board is on screen. The tier boards stay stored either way. */
+  surface: Surface;
+  /** Today's shared board, including an unfinished one from earlier today. */
+  daily: DailyBoard | null;
 }
 
 export type Action =
@@ -78,4 +112,6 @@ export type Action =
   | { type: "switch-practice"; puzzle: PuzzleView }
   | { type: "new-practice"; puzzle: PuzzleView }
   | { type: "next-lesson"; puzzle: PuzzleView; campaignIndex: number }
-  | { type: "choose-tier"; tier: Tier; fresh?: FreshTier };
+  | { type: "choose-tier"; tier: Tier; fresh?: FreshTier }
+  | { type: "play-daily"; day: string; puzzle?: PuzzleView }
+  | { type: "bank-daily"; ms: number };
