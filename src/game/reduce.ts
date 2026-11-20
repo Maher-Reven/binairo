@@ -3,7 +3,7 @@ import { isSolved, placeDigit } from "../domain/rules";
 import { awardCompletion, chargeHint, hintCost } from "../domain/scoring";
 import { cloneStars, mergeStars, movePar, starsForAttempt } from "../domain/stars";
 import { isCampaignLesson } from "../domain/campaign";
-import { findHint, techniqueLabel } from "../domain/techniques";
+import { explainForce, findHint } from "../domain/techniques";
 import type { Grid, Tier } from "../domain/types";
 import { snapshotTier } from "./snapshot";
 import type {
@@ -348,7 +348,7 @@ function hint(state: GameState, today: string): GameState {
   const placed = placeDigit(slot.grid, force.row, force.col, force.digit, slot.puzzle.rules);
   if (!placed.ok) return { ...state, coachLine: placed.rejection.message };
   const charged = chargeHint(state.points, slot.puzzle.tier);
-  const line = `Hint: ${techniqueLabel(force.technique)} places ${force.digit}.`;
+  const line = explainForce(slot.grid, force);
   return applyGrid(
     state,
     { ...slot, grid: placed.grid, moves: slot.moves + 1, hintsUsed: slot.hintsUsed + 1 },
@@ -512,6 +512,6 @@ function dailyHint(state: GameState, daily: DailyBoard, today: string): GameStat
   }
   const placed = placeDigit(daily.grid, force.row, force.col, force.digit, daily.puzzle.rules);
   if (!placed.ok) return { ...state, daily: { ...daily, coachLine: placed.rejection.message } };
-  const line = `Hint: ${techniqueLabel(force.technique)} places ${force.digit}.`;
+  const line = explainForce(daily.grid, force);
   return dailyApply(state, { ...daily, grid: placed.grid, hintsUsed: daily.hintsUsed + 1 }, today, line, state.points);
 }
