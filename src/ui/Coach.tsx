@@ -9,10 +9,10 @@ interface CoachProps {
   state: GameState;
   slot: BoardSlot;
   onMode: (mode: "campaign" | "practice") => void;
-  onChangeTier: () => void;
+  onBack: () => void;
 }
 
-export function Coach({ state, slot, onMode, onChangeTier }: CoachProps) {
+export function Coach({ state, slot, onMode, onBack }: CoachProps) {
   const { puzzle } = slot;
   const where =
     state.mode === "campaign"
@@ -21,7 +21,12 @@ export function Coach({ state, slot, onMode, onChangeTier }: CoachProps) {
   const cost = hintCost(puzzle.tier);
   return (
     <View style={styles.card}>
-      <Text style={styles.wordmark}>Binairo</Text>
+      <View style={styles.header}>
+        <Text style={styles.wordmark}>Binairo</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={pressable}>
+          <Text style={styles.back}>Back</Text>
+        </Pressable>
+      </View>
       <View style={styles.modes}>
         <ModeButton label="Campaign" active={state.mode === "campaign"} onPress={() => onMode("campaign")} />
         <ModeButton label="Practice" active={state.mode === "practice"} onPress={() => onMode("practice")} />
@@ -54,9 +59,6 @@ export function Coach({ state, slot, onMode, onChangeTier }: CoachProps) {
       <Text style={styles.cost}>
         {cost === 0 ? "Hints are free on this tier." : `A hint costs ${cost} points. Costs are provisional.`}
       </Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Change tier" onPress={onChangeTier} style={pressable}>
-        <Text style={styles.change}>Change tier</Text>
-      </Pressable>
     </View>
   );
 }
@@ -87,6 +89,11 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 6,
   },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   wordmark: {
     fontFamily: sans,
     color: theme.gold,
@@ -94,6 +101,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
+  },
+  back: {
+    fontFamily: sans,
+    color: theme.gold,
+    fontSize: 15,
+    fontWeight: "700",
+    minHeight: 32,
   },
   modes: {
     flexDirection: "row",
@@ -165,13 +179,5 @@ const styles = StyleSheet.create({
     color: theme.coachMuted,
     fontSize: 12,
     marginTop: 2,
-  },
-  change: {
-    fontFamily: sans,
-    color: theme.gold,
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 4,
-    minHeight: 32,
   },
 });

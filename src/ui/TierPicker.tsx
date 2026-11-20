@@ -7,12 +7,13 @@ import { pressable, sans, serif, theme } from "./theme";
 interface TierPickerProps {
   busy: boolean;
   error: string | null;
+  continued: readonly Tier[];
   canBack: boolean;
   onPick: (tier: Tier) => void;
   onBack: () => void;
 }
 
-export function TierPicker({ busy, error, canBack, onPick, onBack }: TierPickerProps) {
+export function TierPicker({ busy, error, continued, canBack, onPick, onBack }: TierPickerProps) {
   const { width } = useWindowDimensions();
   const wide = width >= 720;
   return (
@@ -22,10 +23,10 @@ export function TierPicker({ busy, error, canBack, onPick, onBack }: TierPickerP
     >
       <Text style={styles.wordmark}>Binairo</Text>
       <Text style={styles.title}>Choose a tier</Text>
-      <Text style={styles.lead}>The game starts at the tier you pick. Points and streaks stay with you.</Text>
+      <Text style={styles.lead}>Each tier keeps its board. Points and streaks stay with you.</Text>
       <View style={styles.list}>
         {TIER_ORDER.map((tier) => (
-          <TierCard key={tier} tier={tier} busy={busy} onPick={onPick} />
+          <TierCard key={tier} tier={tier} continued={continued.includes(tier)} busy={busy} onPick={onPick} />
         ))}
       </View>
       {busy ? <Text style={styles.status}>Building a board…</Text> : null}
@@ -45,8 +46,18 @@ export function TierPicker({ busy, error, canBack, onPick, onBack }: TierPickerP
   );
 }
 
-function TierCard({ tier, busy, onPick }: { tier: Tier; busy: boolean; onPick: (tier: Tier) => void }) {
-  const detail = tierDetail(tier);
+function TierCard({
+  tier,
+  continued,
+  busy,
+  onPick,
+}: {
+  tier: Tier;
+  continued: boolean;
+  busy: boolean;
+  onPick: (tier: Tier) => void;
+}) {
+  const detail = tierDetail(tier, continued);
   return (
     <Pressable
       accessibilityRole="button"
@@ -63,11 +74,12 @@ function TierCard({ tier, busy, onPick }: { tier: Tier; busy: boolean; onPick: (
   );
 }
 
-function tierDetail(tier: Tier): string {
+function tierDetail(tier: Tier, continued: boolean): string {
   const start = tierStart(tier);
   const cost = hintCost(tier);
   const hint = cost === 0 ? "Hints are free." : `A hint costs ${cost} points.`;
   const rules = tier === "junior" ? "One new rule at a time." : "All three rules.";
+  if (continued) return `Continues your board. ${rules} ${hint}`;
   const where =
     start.kind === "campaign" ? "Starts at the first lesson." : `Starts a ${start.size}×${start.size} practice board.`;
   return `${where} ${rules} ${hint}`;
