@@ -12,7 +12,7 @@ export type {
 } from "./types";
 export { cloneGrid, countHoles, emptyGrid, gridsEqual, isFull } from "./grid";
 export { isSolved, placeDigit, rejectionForGrid, REJECTION_MESSAGE } from "./rules";
-export { findForces, findHint, solveByTechniques, techniqueLabel } from "./techniques";
+export { explainForce, findForces, findHint, solveByTechniques, techniqueLabel } from "./techniques";
 export type { SolveResult } from "./techniques";
 export { countSolutions } from "./counting";
 export { generatePuzzle } from "./generator";

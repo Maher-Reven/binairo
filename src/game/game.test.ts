@@ -78,11 +78,27 @@ describe("play", () => {
     expect(undone.dailyStreak).toBe(0);
   });
 
-  it("gives a junior hint for free and names the technique", () => {
+  it("explains a daily hint without charging or touching stars", () => {
+    const started = reduce(createGame(linePuzzle()), {
+      type: "play-daily",
+      day: "2026-11-20",
+      puzzle: linePuzzle(),
+    });
+    const hinted = reduce(started, { type: "hint", today: "2026-11-20" });
+    expect(hinted.daily?.coachLine).toBe("No-triple forces 0, because 1 1 _ would be three 1s in a row.");
+    expect(hinted.points).toBe(0);
+    expect(hinted.daily?.hintsUsed).toBe(1);
+    expect(hinted.stars).toEqual(started.stars);
+    expect(hinted.savedTiers).toEqual(started.savedTiers);
+    expect(hinted.dailyStreak).toBe(started.dailyStreak);
+    expect(hinted.campaign.grid).toEqual(started.campaign.grid);
+  });
+
+  it("gives a junior hint for free and explains the technique", () => {
     const hinted = reduce(createGame(linePuzzle()), { type: "hint", today: TODAY });
     expect(activeSlot(hinted).grid[0][2]).toBe(0);
     expect(hinted.points).toBe(0);
-    expect(hinted.coachLine).toBe("Hint: no-triple places 0.");
+    expect(hinted.coachLine).toBe("No-triple forces 0, because 1 1 _ would be three 1s in a row.");
   });
 
   it("charges a medium hint and refuses one the player cannot afford", () => {

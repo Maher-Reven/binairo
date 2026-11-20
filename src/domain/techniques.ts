@@ -215,6 +215,108 @@ export function findHint(grid: Grid, rules: readonly RuleId[]): Force | null {
   return fresh[0];
 }
 
+/** One sentence: which technique forced this cell, and why. */
+export function explainForce(grid: Grid, force: Force): string {
+  if (force.technique === "no-triple") return explainNoTriple(grid, force);
+  if (force.technique === "balance") return explainBalance(grid, force);
+  return explainUnique(grid, force);
+}
+
+function explainNoTriple(grid: Grid, force: Force): string {
+  const other: Digit = force.digit === 1 ? 0 : 1;
+  const rowPattern = triplePattern(grid[force.row], force.col);
+  if (rowPattern) {
+    return `No-triple forces ${force.digit}, because ${rowPattern} would be three ${other}s in a row.`;
+  }
+  const columnPattern = triplePattern(column(grid, force.col), force.row);
+  if (columnPattern) {
+    return `No-triple forces ${force.digit}, because ${columnPattern} would be three ${other}s in a column.`;
+  }
+  return `No-triple forces ${force.digit}, because the other digit would make three in a row.`;
+}
+
+function triplePattern(line: readonly Cell[] | undefined, index: number): string | null {
+  if (!line || index < 0 || index >= line.length) return null;
+  const startMin = Math.max(0, index - 2);
+  const startMax = Math.min(index, line.length - 3);
+  for (let start = startMin; start <= startMax; start++) {
+    const shown: string[] = [];
+    let pair: Digit | null = null;
+    let matched = true;
+    for (let offset = 0; offset < 3; offset++) {
+      const at = start + offset;
+      if (at === index) {
+        shown.push("_");
+        continue;
+      }
+      const value = line[at];
+      if (value == null || (pair != null && pair !== value)) {
+        matched = false;
+        break;
+      }
+      pair = value;
+      shown.push(String(value));
+    }
+    if (matched && pair != null) return shown.join(" ");
+  }
+  return null;
+}
+
+function explainBalance(grid: Grid, force: Force): string {
+  const row = balanceOther(grid[force.row], force.col, force.digit);
+  if (row != null) {
+    return `Balance forces ${force.digit} in this row, because the row already holds as many ${row}s as the rule allows.`;
+  }
+  const down = balanceOther(column(grid, force.col), force.row, force.digit);
+  if (down != null) {
+    return `Balance forces ${force.digit} in this column, because the column already holds as many ${down}s as the rule allows.`;
+  }
+  return `Balance forces ${force.digit}, because a line already holds as many of the other digit as the rule allows.`;
+}
+
+function balanceOther(line: readonly Cell[] | undefined, index: number, digit: Digit): Digit | null {
+  if (!line || line.length % 2 !== 0 || index < 0 || index >= line.length || line[index] != null) return null;
+  const half = line.length / 2;
+  let zeros = 0;
+  let ones = 0;
+  for (const cell of line) {
+    if (cell === 0) zeros++;
+    else if (cell === 1) ones++;
+  }
+  if (digit === 0 && ones === half && zeros < half) return 1;
+  if (digit === 1 && zeros === half && ones < half) return 0;
+  return null;
+}
+
+function explainUnique(grid: Grid, force: Force): string {
+  const other: Digit = force.digit === 1 ? 0 : 1;
+  if (uniqueDigit(grid, force.row, force.col) === force.digit) {
+    return `Uniqueness forces ${force.digit} in this row, because ${other} would copy a finished row.`;
+  }
+  if (uniqueDigit(columnsAsRows(grid), force.col, force.row) === force.digit) {
+    return `Uniqueness forces ${force.digit} in this column, because ${other} would copy a finished column.`;
+  }
+  return `Uniqueness forces ${force.digit}, because the other digit would copy a finished line.`;
+}
+
+function uniqueDigit(lines: readonly (readonly Cell[])[], lineIndex: number, index: number): Digit | null {
+  const line = lines[lineIndex];
+  if (!line || index < 0 || index >= line.length || line[index] != null) return null;
+  const empties: number[] = [];
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] == null) empties.push(i);
+  }
+  if (empties.length !== 1 || empties[0] !== index) return null;
+  const completed = lines.filter((done) => isLineComplete(done));
+  const options: Digit[] = [];
+  for (const digit of [0, 1] as const) {
+    const candidate = line.slice();
+    candidate[index] = digit;
+    if (!completed.some((done) => lineEquals(done, candidate))) options.push(digit);
+  }
+  return options.length === 1 ? options[0] : null;
+}
+
 export function techniqueLabel(rule: RuleId): string {
   if (rule === "unique") return "uniqueness";
   return rule;

@@ -73,9 +73,9 @@ export function Coach({ state, slot, elapsedLabel, shareNote, onMode, onBack, on
         <Text
           style={[
             styles.event,
-            event.startsWith("no-triple") ||
-            event.startsWith("balance") ||
-            event.startsWith("unique") ||
+            event.startsWith("no-triple:") ||
+            event.startsWith("balance:") ||
+            event.startsWith("unique:") ||
             event.startsWith("A hint costs")
               ? styles.danger
               : event.startsWith("Solved") || event.includes("Solved.")

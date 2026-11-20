@@ -5,7 +5,7 @@ import { generatePuzzle } from "./generator";
 import { cloneGrid } from "./grid";
 import { isSolved, placeDigit, rejectionForGrid } from "./rules";
 import { awardCompletion, completionPoints, dailyStreakLabel, hintCost } from "./scoring";
-import { findHint, solveByTechniques } from "./techniques";
+import { explainForce, findHint, solveByTechniques } from "./techniques";
 import type { Grid, RuleId } from "./types";
 
 const NO_TRIPLE: RuleId[] = ["no-triple"];
@@ -135,6 +135,72 @@ describe("solvers", () => {
 
   it("returns no hint when nothing is forced", () => {
     expect(findHint([[1, null, null, null, null, 0]], NO_TRIPLE)).toBeNull();
+  });
+
+  it("explains a forced cell in one sentence and invents nothing when no cell is forced", () => {
+    const line: Grid = [[1, 1, null, null, 0, 0]];
+    const noTriple = findHint(line, NO_TRIPLE);
+    expect(noTriple && explainForce(line, noTriple)).toBe(
+      "No-triple forces 0, because 1 1 _ would be three 1s in a row.",
+    );
+
+    const gap: Grid = [[1, null, 1, 0, 0, 1]];
+    const gapHint = findHint(gap, NO_TRIPLE);
+    expect(gapHint && explainForce(gap, gapHint)).toBe(
+      "No-triple forces 0, because 1 _ 1 would be three 1s in a row.",
+    );
+
+    const down: Grid = [
+      [1, 0],
+      [1, 0],
+      [null, 1],
+      [0, 1],
+    ];
+    const downHint = findHint(down, NO_TRIPLE);
+    expect(downHint).toMatchObject({ row: 2, col: 0, digit: 0, technique: "no-triple" });
+    expect(downHint && explainForce(down, downHint)).toBe(
+      "No-triple forces 0, because 1 1 _ would be three 1s in a column.",
+    );
+
+    const half: Grid = [[1, 0, 1, null]];
+    const balance = findHint(half, BALANCE);
+    expect(balance && explainForce(half, balance)).toBe(
+      "Balance forces 0 in this row, because the row already holds as many 1s as the rule allows.",
+    );
+
+    const copy: Grid = [
+      [1, 1, 0, 0],
+      [0, 0, 1, 1],
+      [1, 1, 0, null],
+      [null, null, null, null],
+    ];
+    const unique = findHint(copy, UNIQUE);
+    expect(unique && explainForce(copy, unique)).toBe(
+      "Uniqueness forces 1 in this row, because 0 would copy a finished row.",
+    );
+
+    const columnCopy: Grid = [
+      [1, 0, 1, 0],
+      [0, 1, 0, 1],
+      [1, 0, null, null],
+      [0, 1, 0, 0],
+    ];
+    const columnHint = findHint(columnCopy, UNIQUE);
+    expect(columnHint).toMatchObject({ row: 2, col: 2, digit: 0, technique: "unique" });
+    expect(columnHint && explainForce(columnCopy, columnHint)).toBe(
+      "Uniqueness forces 0 in this column, because 1 would copy a finished column.",
+    );
+
+    expect(findHint([[1, null, null, null, null, 0]], NO_TRIPLE)).toBeNull();
+    for (const sentence of [
+      noTriple && explainForce(line, noTriple),
+      balance && explainForce(half, balance),
+      unique && explainForce(copy, unique),
+    ]) {
+      expect(sentence?.includes("\n")).toBe(false);
+      expect(sentence?.endsWith(".")).toBe(true);
+      expect(sentence?.slice(0, -1).includes(".")).toBe(false);
+    }
   });
 });
 
