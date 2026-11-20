@@ -19,6 +19,17 @@ export { generatePuzzle } from "./generator";
 export { mulberry32 } from "./rng";
 export { DAILY_RULES, DAILY_SIZE, dailySeed, dailyShareLine, formatElapsed } from "./daily";
 export {
+  attemptStatus,
+  blankStars,
+  cloneStars,
+  mergeStars,
+  movePar,
+  starCount,
+  starSummary,
+  starsForAttempt,
+} from "./stars";
+export type { LessonStars, LessonStarsMap } from "./stars";
+export {
   awardCompletion,
   chargeHint,
   completionPoints,

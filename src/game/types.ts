@@ -1,3 +1,4 @@
+import type { LessonStarsMap } from "../domain/stars";
 import type { BoardShape, Digit, Grid, RuleId, Tier } from "../domain/types";
 
 export interface PuzzleView {
@@ -20,12 +21,22 @@ export interface UndoFrame {
   dailyStreak: number;
   lastCompletionDay: string | null;
   won: boolean;
+  clean: boolean;
+  moves: number;
+  hintsUsed: number;
+  /** Null on a save from before stars existed. Undo then leaves the star record alone. */
+  stars: LessonStarsMap | null;
 }
 
 export interface BoardSlot {
   puzzle: PuzzleView;
   grid: Grid;
   won: boolean;
+  /** False after a rejected placement on this attempt. Reset starts it clean again. */
+  clean: boolean;
+  /** Placements and erases. A hint that fills a cell counts. A rejection does not. */
+  moves: number;
+  hintsUsed: number;
 }
 
 export type Mode = "campaign" | "practice";
@@ -100,6 +111,8 @@ export interface GameState {
   surface: Surface;
   /** Today's shared board, including an unfinished one from earlier today. */
   daily: DailyBoard | null;
+  /** Best stars per campaign lesson. A replay can add one and cannot take one away. */
+  stars: LessonStarsMap;
 }
 
 export type Action =

@@ -1,4 +1,5 @@
 import { cloneGrid } from "../domain/grid";
+import { cloneStars } from "../domain/stars";
 import type { BoardSlot, GameState, TierSnapshot, UndoFrame } from "./types";
 
 export function snapshotTier(state: GameState): TierSnapshot {
@@ -18,9 +19,16 @@ export function snapshotTier(state: GameState): TierSnapshot {
 }
 
 function cloneSlot(slot: BoardSlot): BoardSlot {
-  return { puzzle: slot.puzzle, grid: cloneGrid(slot.grid), won: slot.won };
+  return {
+    puzzle: slot.puzzle,
+    grid: cloneGrid(slot.grid),
+    won: slot.won,
+    clean: slot.clean,
+    moves: slot.moves,
+    hintsUsed: slot.hintsUsed,
+  };
 }
 
 function cloneFrame(frame: UndoFrame): UndoFrame {
-  return { ...frame, grid: cloneGrid(frame.grid) };
+  return { ...frame, grid: cloneGrid(frame.grid), stars: frame.stars ? cloneStars(frame.stars) : null };
 }

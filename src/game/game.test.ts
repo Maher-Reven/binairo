@@ -507,3 +507,65 @@ function winLine(state: GameState, today: string) {
   const withOne = reduce(first, { type: "select", tool: 1 });
   return reduce(withOne, { type: "tap", row: 0, col: 3, today });
 }
+
+describe("lesson stars", () => {
+  it("earns three stars on a clean finish at par with no hint", () => {
+    const puzzle = linePuzzle();
+    puzzle.id = "line-no-triple";
+    const won = winLine(createGame(puzzle), TODAY);
+    expect(won.campaign.moves).toBe(2);
+    expect(won.stars["line-no-triple"]).toEqual({ clean: true, par: true, hint: true });
+    expect(won.dailyStreak).toBe(1);
+  });
+
+  it("adds a missing star on replay and does not take one away", () => {
+    const puzzle = linePuzzle();
+    puzzle.id = "line-no-triple";
+    const dirty = winLine(
+      reduce(reduce(createGame(puzzle), { type: "select", tool: 1 }), { type: "tap", row: 0, col: 2, today: TODAY }),
+      TODAY,
+    );
+    expect(dirty.campaign.clean).toBe(false);
+    expect(dirty.campaign.moves).toBe(2);
+    expect(dirty.stars["line-no-triple"]).toEqual({ clean: false, par: true, hint: true });
+
+    const clean = winLine(reduce(dirty, { type: "reset" }), TODAY);
+    expect(clean.stars["line-no-triple"]).toEqual({ clean: true, par: true, hint: true });
+
+    const hinted = reduce(reduce(clean, { type: "reset" }), { type: "hint", today: TODAY });
+    const finished = reduce(reduce(hinted, { type: "select", tool: 1 }), { type: "tap", row: 0, col: 3, today: TODAY });
+    expect(finished.campaign.hintsUsed).toBe(1);
+    expect(finished.stars["line-no-triple"]).toEqual({ clean: true, par: true, hint: true });
+    expect(finished.dailyStreak).toBe(1);
+  });
+
+  it("undoes a star that this finish just earned", () => {
+    const puzzle = linePuzzle();
+    puzzle.id = "line-no-triple";
+    const won = winLine(createGame(puzzle), TODAY);
+    const undone = reduce(won, { type: "undo" });
+    expect(undone.stars).toEqual({});
+    expect(undone.campaign.won).toBe(false);
+    expect(undone.campaign.moves).toBe(1);
+  });
+
+  it("keeps stars, the daily board, and the other tier boards together", () => {
+    const puzzle = linePuzzle();
+    puzzle.id = "line-no-triple";
+    const won = winLine(createGame(puzzle), TODAY);
+    const mediumPuzzle = linePuzzle("medium");
+    mediumPuzzle.id = "grid8";
+    const medium = reduce(won, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle: mediumPuzzle, campaignIndex: 4 },
+    });
+    const daily = reduce(medium, { type: "play-daily", day: "2026-11-20", puzzle: linePuzzle() });
+    const played = reduce(reduce(daily, { type: "select", tool: 0 }), { type: "tap", row: 0, col: 2, today: TODAY });
+    expect(played.stars).toEqual(won.stars);
+    expect(played.dailyStreak).toBe(won.dailyStreak);
+    expect(played.savedTiers.junior?.campaign.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
+    expect(played.campaign.grid[0][2]).toBeNull();
+    expect(played.daily?.grid[0][2]).toBe(0);
+  });
+});

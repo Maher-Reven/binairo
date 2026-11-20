@@ -1,5 +1,6 @@
-import { cloneGrid } from "../domain/grid";
+import { cloneGrid, countHoles, gridsEqual } from "../domain/grid";
 import { localDay } from "../domain/scoring";
+import type { LessonStars, LessonStarsMap } from "../domain/stars";
 import type { Cell, Grid, RuleId, Tier } from "../domain/types";
 import { snapshotTier } from "../game/snapshot";
 import type { BoardSlot, DailyBoard, DailyUndo, GameState, PuzzleView, Surface, TierSnapshot, UndoFrame } from "../game/types";
@@ -36,6 +37,7 @@ interface SavedProfile {
   tiers: Partial<Record<Tier, TierSnapshot>>;
   surface: Surface;
   daily: DailyBoard | null;
+  stars: LessonStarsMap;
 }
 
 export function serialize(state: GameState): string {
@@ -53,6 +55,7 @@ export function serialize(state: GameState): string {
     tiers,
     surface: state.surface,
     daily: state.daily,
+    stars: state.stars,
   };
   return JSON.stringify(saved);
 }
@@ -73,7 +76,7 @@ function hydrateLegacy(parsed: Record<string, unknown>): GameState | null {
   const snap = parseSnapshot(parsed);
   if (!snap) return null;
   const tier = snap.mode === "practice" && snap.practice ? snap.practice.puzzle.tier : snap.campaign.puzzle.tier;
-  return gameFrom(snap, tier, {}, economyOf(snap), "tier", null);
+  return gameFrom(snap, tier, {}, economyOf(snap), "tier", null, {});
 }
 
 function hydrateProfile(parsed: Record<string, unknown>): GameState | null {
@@ -92,7 +95,7 @@ function hydrateProfile(parsed: Record<string, unknown>): GameState | null {
   delete savedTiers[parsed.tier];
   const daily = parseDaily(parsed.daily);
   const surface: Surface = parsed.surface === "daily" && daily ? "daily" : "tier";
-  return gameFrom(live, parsed.tier, savedTiers, economy, surface, daily);
+  return gameFrom(live, parsed.tier, savedTiers, economy, surface, daily, parseStars(parsed.stars));
 }
 
 function gameFrom(
@@ -102,6 +105,7 @@ function gameFrom(
   economy: { points: number; puzzleStreak: number; dailyStreak: number; lastCompletionDay: string | null },
   surface: Surface,
   daily: DailyBoard | null,
+  stars: LessonStarsMap,
 ): GameState {
   const ledgerMoved =
     snap.points !== economy.points ||
@@ -124,7 +128,20 @@ function gameFrom(
     undo: ledgerMoved ? [] : snap.undo,
     surface,
     daily,
+    stars,
   };
+}
+
+function parseStars(value: unknown): LessonStarsMap {
+  if (!isRecord(value)) return {};
+  const stars: LessonStarsMap = {};
+  for (const [id, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue;
+    if (typeof entry.clean !== "boolean" || typeof entry.par !== "boolean" || typeof entry.hint !== "boolean") continue;
+    const record: LessonStars = { clean: entry.clean, par: entry.par, hint: entry.hint };
+    stars[id] = record;
+  }
+  return stars;
 }
 
 function parseDaily(value: unknown): DailyBoard | null {
@@ -247,6 +264,24 @@ export function todayFrom(date = new Date()): string {
   return localDay(date);
 }
 
+function attemptFrom(
+  value: Record<string, unknown>,
+  puzzle: PuzzleView,
+  grid: Grid,
+  won: boolean,
+): { clean: boolean; moves: number; hintsUsed: number } {
+  if (typeof value.clean === "boolean" && typeof value.moves === "number" && typeof value.hintsUsed === "number") {
+    return {
+      clean: value.clean,
+      moves: Math.max(0, Math.floor(value.moves)),
+      hintsUsed: Math.max(0, Math.floor(value.hintsUsed)),
+    };
+  }
+  const started = won || !gridsEqual(grid, puzzle.givens);
+  if (!started) return { clean: true, moves: 0, hintsUsed: 0 };
+  return { clean: false, moves: countHoles(puzzle.givens) + 1, hintsUsed: 1 };
+}
+
 function parseSlot(value: unknown): BoardSlot | null {
   if (!isRecord(value)) return null;
   const puzzle = parsePuzzle(value.puzzle);
@@ -260,7 +295,7 @@ function parseSlot(value: unknown): BoardSlot | null {
       if (given != null) restored[r][c] = given;
     }
   }
-  return { puzzle, grid: restored, won: value.won };
+  return { puzzle, grid: restored, won: value.won, ...attemptFrom(value, puzzle, restored, value.won) };
 }
 
 function parsePuzzle(value: unknown): PuzzleView | null {
@@ -301,6 +336,10 @@ function parseUndo(value: unknown): UndoFrame[] | null {
       dailyStreak: entry.dailyStreak,
       lastCompletionDay: last ?? null,
       won: entry.won,
+      clean: typeof entry.clean === "boolean" ? entry.clean : true,
+      moves: typeof entry.moves === "number" ? Math.max(0, Math.floor(entry.moves)) : 0,
+      hintsUsed: typeof entry.hintsUsed === "number" ? Math.max(0, Math.floor(entry.hintsUsed)) : 0,
+      stars: entry.stars == null ? null : parseStars(entry.stars),
     });
   }
   return frames;
