@@ -129,6 +129,7 @@ function gameFrom(
     surface,
     daily,
     stars,
+    look: null,
   };
 }
 

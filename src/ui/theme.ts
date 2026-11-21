@@ -20,6 +20,9 @@ export const theme = {
   /** Empty cells on the active row or column. Filled cells keep their digit color. */
   cross: "#f0d2a4",
   crossActive: "#e4b86a",
+  /** The hint look, distinct from the gold active row and column. */
+  look: "#2c6e9e",
+  lookWash: "#d4e6f5",
 };
 
 export const serif = Platform.select({

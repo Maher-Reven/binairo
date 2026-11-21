@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { HintLook } from "../domain/techniques";
 import type { Grid } from "../domain/types";
 import { pressable, theme } from "./theme";
 
@@ -14,10 +15,12 @@ interface BoardProps {
   disabled: boolean;
   /** The cell the player last touched. Its row and column stay marked. */
   active: ActiveCell | null;
+  /** The free hint look. One row or one column, with no digit revealed. */
+  look: HintLook | null;
   onTap: (row: number, col: number) => void;
 }
 
-export function Board({ grid, givens, cellSize, disabled, active, onTap }: BoardProps) {
+export function Board({ grid, givens, cellSize, disabled, active, look, onTap }: BoardProps) {
   const gap = cellSize >= 48 ? 6 : 4;
   const glyph = Math.max(16, Math.round(cellSize * 0.48));
   const marked =
@@ -34,7 +37,10 @@ export function Board({ grid, givens, cellSize, disabled, active, onTap }: Board
             const glyphColor = cell === 0 ? theme.zeroInk : theme.oneInk;
             const onCell = marked != null && r === marked.row && c === marked.col;
             const onLine = marked != null && (r === marked.row || c === marked.col);
-            const label = `Row ${r + 1}, column ${c + 1}, ${cell == null ? "empty" : cell}${given ? ", given" : ""}${onCell ? ", active" : onLine ? ", highlighted" : ""}`;
+            const onLook =
+              look != null &&
+              ((look.axis === "row" && r === look.index) || (look.axis === "column" && c === look.index));
+            const label = `Row ${r + 1}, column ${c + 1}, ${cell == null ? "empty" : cell}${given ? ", given" : ""}${onCell ? ", active" : onLine ? ", highlighted" : ""}${onLook ? ", hint look" : ""}`;
             return (
               <Pressable
                 key={c}
@@ -50,10 +56,20 @@ export function Board({ grid, givens, cellSize, disabled, active, onTap }: Board
                     width: cellSize,
                     height: cellSize,
                     borderRadius: Math.max(6, Math.round(cellSize * 0.16)),
-                    borderColor: onCell ? theme.ink : onLine ? theme.gold : theme.line,
-                    borderWidth: onLine ? 4 : 1,
+                    borderColor: onCell ? theme.ink : onLine ? theme.gold : onLook ? theme.look : theme.line,
+                    borderWidth: onLine || onLook ? 4 : 1,
                     backgroundColor:
-                      cell == null ? (onCell ? theme.crossActive : onLine ? theme.cross : theme.white) : given ? ink : theme.paperDeep,
+                      cell == null
+                        ? onCell
+                          ? theme.crossActive
+                          : onLine
+                            ? theme.cross
+                            : onLook
+                              ? theme.lookWash
+                              : theme.white
+                        : given
+                          ? ink
+                          : theme.paperDeep,
                     padding: cell != null && !given ? Math.max(3, Math.round(cellSize * 0.08)) : 0,
                   },
                 ]}
@@ -63,10 +79,12 @@ export function Board({ grid, givens, cellSize, disabled, active, onTap }: Board
                     <Text style={{ color: glyphColor, fontSize: glyph, fontWeight: "700" }}>{cell}</Text>
                   ) : null}
                 </View>
-                {onLine ? (
+                {onLine || onLook ? (
                   <View pointerEvents="none" style={styles.marks}>
-                    {r === marked.row ? <View style={styles.rowBar} /> : null}
-                    {c === marked.col ? <View style={styles.colBar} /> : null}
+                    {onLine && r === marked.row ? <View style={styles.rowBar} /> : null}
+                    {onLine && c === marked.col ? <View style={styles.colBar} /> : null}
+                    {look?.axis === "row" && r === look.index ? <View style={styles.lookRow} /> : null}
+                    {look?.axis === "column" && c === look.index ? <View style={styles.lookCol} /> : null}
                   </View>
                 ) : null}
               </Pressable>
@@ -113,5 +131,21 @@ const styles = StyleSheet.create({
     left: 0,
     width: 4,
     backgroundColor: theme.gold,
+  },
+  lookRow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 4,
+    backgroundColor: theme.look,
+  },
+  lookCol: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: 4,
+    backgroundColor: theme.look,
   },
 });

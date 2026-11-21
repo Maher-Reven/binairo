@@ -1,3 +1,4 @@
+import type { HintLook } from "../domain/techniques";
 import type { LessonStarsMap } from "../domain/stars";
 import type { BoardShape, Digit, Grid, RuleId, Tier } from "../domain/types";
 
@@ -113,6 +114,11 @@ export interface GameState {
   daily: DailyBoard | null;
   /** Best stars per campaign lesson. A replay can add one and cannot take one away. */
   stars: LessonStarsMap;
+  /**
+   * The free look from the previous hint tap.
+   * A second tap fills a cell only while this line is still forced.
+   */
+  look: HintLook | null;
 }
 
 export type Action =

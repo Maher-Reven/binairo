@@ -215,6 +215,59 @@ export function findHint(grid: Grid, rules: readonly RuleId[]): Force | null {
   return fresh[0];
 }
 
+/** A row or a column that holds a forced cell. The look names the rule and not the digit. */
+export interface HintLook {
+  axis: "row" | "column";
+  index: number;
+  rule: RuleId;
+}
+
+/** The line that contains the first forced cell, or null when nothing is forced. */
+export function findLook(grid: Grid, rules: readonly RuleId[]): HintLook | null {
+  const force = findHint(grid, rules);
+  if (!force) return null;
+  const line = lineOf(grid, force);
+  return { axis: line.axis, index: line.index, rule: force.technique };
+}
+
+/** A forced cell still on this look's line, under the same rule. */
+export function forceOnLook(grid: Grid, rules: readonly RuleId[], look: HintLook): Force | null {
+  const scan = findForces(grid, rules);
+  if (scan.contradiction || scan.forces.length === 0) return null;
+  const onLine = scan.forces.filter((force) => {
+    if (grid[force.row][force.col] != null || force.technique !== look.rule) return false;
+    return look.axis === "row" ? force.row === look.index : force.col === look.index;
+  });
+  if (onLine.length === 0) return null;
+  onLine.sort((a, b) => a.row - b.row || a.col - b.col);
+  return onLine[0];
+}
+
+export function lookSentence(look: HintLook): string {
+  if (look.axis === "column" && look.rule === "balance") return "Look at this column. The rule is balance.";
+  if (look.axis === "column" && look.rule === "unique") return "Look at this column. The rule is uniqueness.";
+  if (look.axis === "column") return "Look at this column. The rule is no-triple.";
+  if (look.rule === "balance") return "Look at this row. The rule is balance.";
+  if (look.rule === "unique") return "Look at this row. The rule is uniqueness.";
+  return "Look at this row. The rule is no-triple.";
+}
+
+function lineOf(grid: Grid, force: Force): { axis: "row" | "column"; index: number } {
+  if (force.technique === "no-triple") {
+    if (triplePattern(grid[force.row], force.col)) return { axis: "row", index: force.row };
+    if (triplePattern(column(grid, force.col), force.row)) return { axis: "column", index: force.col };
+  }
+  if (force.technique === "balance") {
+    if (balanceOther(grid[force.row], force.col, force.digit) != null) return { axis: "row", index: force.row };
+    if (balanceOther(column(grid, force.col), force.row, force.digit) != null) return { axis: "column", index: force.col };
+  }
+  if (force.technique === "unique") {
+    if (uniqueDigit(grid, force.row, force.col) === force.digit) return { axis: "row", index: force.row };
+    if (uniqueDigit(columnsAsRows(grid), force.col, force.row) === force.digit) return { axis: "column", index: force.col };
+  }
+  return { axis: "row", index: force.row };
+}
+
 /** One sentence: which technique forced this cell, and why. */
 export function explainForce(grid: Grid, force: Force): string {
   if (force.technique === "no-triple") return explainNoTriple(grid, force);
