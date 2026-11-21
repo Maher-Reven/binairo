@@ -17,6 +17,9 @@ export const theme = {
   danger: "#ffb4a2",
   good: "#b7e0c7",
   white: "#fffdf8",
+  /** Empty cells on the active row or column. Filled cells keep their digit color. */
+  cross: "#f0d2a4",
+  crossActive: "#e4b86a",
 };
 
 export const serif = Platform.select({

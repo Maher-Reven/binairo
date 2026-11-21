@@ -277,6 +277,135 @@ describe("play", () => {
   });
 });
 
+describe("undo", () => {
+  it("undoes a legal placement and an erase, one cell at a time", () => {
+    const start = createGame(linePuzzle());
+    const placed = reduce(start, { type: "tap", row: 0, col: 2, today: TODAY });
+    expect(activeSlot(placed).grid[0][2]).toBe(0);
+    expect(placed.undo).toHaveLength(1);
+    expect(placed.points).toBe(0);
+    expect(placed.puzzleStreak).toBe(0);
+    expect(placed.stars).toEqual({});
+
+    const erased = reduce(reduce(placed, { type: "select", tool: "erase" }), {
+      type: "tap",
+      row: 0,
+      col: 2,
+      today: TODAY,
+    });
+    expect(activeSlot(erased).grid[0][2]).toBeNull();
+    expect(erased.points).toBe(0);
+    expect(erased.puzzleStreak).toBe(0);
+
+    const restored = reduce(erased, { type: "undo" });
+    expect(activeSlot(restored).grid[0][2]).toBe(0);
+    expect(restored.points).toBe(0);
+    expect(restored.puzzleStreak).toBe(0);
+    expect(restored.stars).toEqual({});
+
+    const cleared = reduce(restored, { type: "undo" });
+    expect(activeSlot(cleared).grid).toEqual(start.campaign.grid);
+    expect(cleared.undo).toHaveLength(0);
+    expect(cleared.points).toBe(0);
+    expect(cleared.puzzleStreak).toBe(0);
+  });
+
+  it("does not refund a hint or move the streak when a later placement is undone", () => {
+    const puzzle = linePuzzle("medium");
+    const rich = { ...createGame(puzzle), points: 40, puzzleStreak: 3 };
+    const hinted = reduce(rich, { type: "hint", today: TODAY });
+    expect(hinted.points).toBe(30);
+    expect(activeSlot(hinted).grid[0][2]).toBe(0);
+    const placed = reduce(reduce(hinted, { type: "select", tool: 1 }), {
+      type: "tap",
+      row: 0,
+      col: 3,
+      today: TODAY,
+    });
+    expect(activeSlot(placed).won).toBe(true);
+    const undone = reduce(placed, { type: "undo" });
+    expect(activeSlot(undone).grid[0][3]).toBeNull();
+    expect(activeSlot(undone).grid[0][2]).toBe(0);
+    expect(undone.points).toBe(30);
+    expect(undone.puzzleStreak).toBe(3);
+    expect(undone.stars).toEqual(rich.stars);
+    expect(undone.daily).toEqual(rich.daily);
+  });
+
+  it("does nothing when this board has no placement to undo", () => {
+    const start = createGame(linePuzzle());
+    expect(reduce(start, { type: "undo" })).toBe(start);
+
+    const rejected = reduce(reduce(start, { type: "select", tool: 1 }), {
+      type: "tap",
+      row: 0,
+      col: 2,
+      today: TODAY,
+    });
+    expect(rejected.undo).toHaveLength(0);
+    expect(activeSlot(rejected).grid[0][2]).toBeNull();
+    expect(reduce(rejected, { type: "undo" })).toBe(rejected);
+
+    const erased = reduce(reduce(start, { type: "select", tool: "erase" }), {
+      type: "tap",
+      row: 0,
+      col: 2,
+      today: TODAY,
+    });
+    expect(erased.undo).toHaveLength(0);
+    expect(reduce(erased, { type: "undo" })).toBe(erased);
+    expect(erased.puzzleStreak).toBe(0);
+  });
+
+  it("keeps undo when the tier is saved and opened again", async () => {
+    const placed = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const other = linePuzzle("medium");
+    other.id = "held";
+    const left = reduce(placed, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle: other, campaignIndex: 4 },
+    });
+    const store = memoryStore();
+    await saveGame(store, left);
+    const loaded = await loadGame(store);
+    expect(loaded?.savedTiers.junior?.undo).toHaveLength(1);
+    const back = reduce(loaded!, { type: "choose-tier", tier: "junior" });
+    expect(back.tier).toBe("junior");
+    expect(back.undo).toHaveLength(1);
+    expect(activeSlot(back).grid[0][2]).toBe(0);
+    expect(back.points).toBe(0);
+    expect(back.puzzleStreak).toBe(0);
+    const undone = reduce(back, { type: "undo" });
+    expect(activeSlot(undone).grid[0][2]).toBeNull();
+    expect(undone.undo).toHaveLength(0);
+    expect(undone.points).toBe(0);
+    expect(undone.puzzleStreak).toBe(0);
+    expect(undone.stars).toEqual({});
+  });
+
+  it("clears only this board's undo history on reset", () => {
+    const placed = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });
+    const other = linePuzzle("medium");
+    other.id = "kept";
+    const medium = reduce(placed, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle: other, campaignIndex: 4 },
+    });
+    const started = reduce(medium, { type: "tap", row: 0, col: 2, today: TODAY });
+    expect(started.undo).toHaveLength(1);
+    const reset = reduce(started, { type: "reset" });
+    expect(reset.undo).toEqual([]);
+    expect(activeSlot(reset).grid).toEqual(other.givens);
+    expect(reduce(reset, { type: "undo" })).toBe(reset);
+    expect(reset.savedTiers.junior?.undo).toHaveLength(1);
+    expect(reset.savedTiers.junior?.campaign.grid[0][2]).toBe(0);
+    expect(reset.points).toBe(0);
+    expect(reset.stars).toEqual(started.stars);
+  });
+});
+
 describe("persistence", () => {
   it("round-trips the in-progress board", async () => {
     const state = reduce(createGame(linePuzzle()), { type: "tap", row: 0, col: 2, today: TODAY });

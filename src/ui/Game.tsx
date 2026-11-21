@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { TIER_ORDER, tierStart } from "../domain/campaign";
 import { formatElapsed } from "../domain/daily";
-import type { Tier } from "../domain/types";
+import type { Grid, Tier } from "../domain/types";
 import { campaignPuzzle, dailyPuzzle, hasNextLesson, newPracticePuzzle, practicePuzzle, practicePuzzleAt } from "../game/puzzles";
 import { activeSlot, createGame, createPracticeGame, reduce } from "../game/reduce";
 import type { Action, GameState } from "../game/types";
@@ -28,6 +28,7 @@ export function Game({ storage }: GameProps) {
   const [cell, setCell] = useState(MIN_CELL);
   const [tick, setTick] = useState(0);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  const [active, setActive] = useState<{ row: number; col: number } | null>(null);
   const { width } = useWindowDimensions();
   const wide = width >= 880;
 
@@ -101,13 +102,18 @@ export function Game({ storage }: GameProps) {
   }, [clocking, clockDay]);
 
   const pane = wide ? Math.max(320, width - 420) : Math.max(280, width - 24);
-  const puzzleKey = state ? `${state.mode}:${activeSlot(state).puzzle.id}:${activeSlot(state).puzzle.seed}` : "";
+  const puzzleKey = state
+    ? `${state.surface}:${state.mode}:${activeSlot(state).puzzle.id}:${activeSlot(state).puzzle.seed}`
+    : "";
   useEffect(() => {
     const current = stateRef.current;
     if (!current) return;
     const slot = activeSlot(current);
     setCell(baseCell(slot.puzzle.shape, slot.puzzle.size, pane));
   }, [puzzleKey, pane]);
+  useEffect(() => {
+    setActive(null);
+  }, [puzzleKey]);
 
   const playing = state != null && !picking;
   useEffect(() => {
@@ -133,10 +139,14 @@ export function Game({ storage }: GameProps) {
   }, [playing]);
 
   const play = (action: Action) => {
-    setState((current) => {
-      if (!current) return current;
-      return reduce(bankOpenDaily(current), action);
-    });
+    const current = stateRef.current;
+    if (!current) return;
+    const banked = bankOpenDaily(current);
+    const next = reduce(banked, action);
+    stateRef.current = next;
+    const landed = focusAfter(action, banked, next);
+    if (landed) setActive(landed);
+    setState(next);
   };
 
   const chooseTier = (tier: Tier) => {
@@ -349,6 +359,7 @@ export function Game({ storage }: GameProps) {
         givens={slot.puzzle.givens}
         cellSize={cell}
         disabled={slot.won || busy}
+        active={active}
         onTap={(row, col) => play({ type: "tap", row, col, today: todayFrom() })}
       />
     </BoardViewport>
@@ -388,6 +399,27 @@ function dailyStatus(state: GameState | null): "fresh" | "playing" | "won" {
   const today = todayFrom();
   if (!state?.daily || state.daily.day !== today) return "fresh";
   return state.daily.won ? "won" : "playing";
+}
+
+function focusAfter(
+  action: Action,
+  before: GameState,
+  after: GameState,
+): { row: number; col: number } | null {
+  if (action.type === "tap") return { row: action.row, col: action.col };
+  if (action.type !== "undo") return null;
+  return changedCell(activeSlot(before).grid, activeSlot(after).grid);
+}
+
+function changedCell(before: Grid, after: Grid): { row: number; col: number } | null {
+  const rows = Math.min(before.length, after.length);
+  for (let row = 0; row < rows; row++) {
+    const cols = Math.min(before[row].length, after[row].length);
+    for (let col = 0; col < cols; col++) {
+      if (before[row][col] !== after[row][col]) return { row, col };
+    }
+  }
+  return null;
 }
 
 function bankDaily(current: GameState, day: string, ms: number): GameState {
