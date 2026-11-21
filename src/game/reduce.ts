@@ -3,8 +3,8 @@ import { isSolved, placeDigit } from "../domain/rules";
 import { awardCompletion, chargeHint, hintCost } from "../domain/scoring";
 import { cloneStars, mergeStars, movePar, starsForAttempt } from "../domain/stars";
 import { isCampaignLesson } from "../domain/campaign";
-import { explainForce, findHint } from "../domain/techniques";
-import type { Grid, Tier } from "../domain/types";
+import { explainForce, findLook, forceOnLook, lookSentence } from "../domain/techniques";
+import type { Force, Grid, Tier } from "../domain/types";
 import { snapshotTier } from "./snapshot";
 import type {
   Action,
@@ -53,6 +53,7 @@ export function createGame(campaign: PuzzleView, campaignIndex = 0): GameState {
     surface: "tier",
     daily: null,
     stars: {},
+    look: null,
   };
 }
 
@@ -106,9 +107,10 @@ function applyGrid(
   today: string,
   coachLine: string,
   pointsAfterMove: number,
+  extra: Partial<GameState> = {},
 ): GameState {
   if (!isSolved(slot.grid, slot.puzzle.rules)) {
-    return pushUndo(state, { ...slot, won: false }, { points: pointsAfterMove, coachLine });
+    return pushUndo(state, { ...slot, won: false }, { points: pointsAfterMove, coachLine, ...extra });
   }
   const award = awardCompletion(
     {
@@ -130,6 +132,7 @@ function applyGrid(
     lastCompletionDay: award.lastCompletionDay,
     coachLine: solvedLine,
     stars: awardedStars(state, slot),
+    ...extra,
   });
 }
 
@@ -168,6 +171,7 @@ export function reduce(state: GameState, action: Action): GameState {
         practice: freshSlot(action.puzzle),
         undo: [],
         coachLine: "New practice board.",
+        look: null,
       };
     case "next-lesson":
       if (state.surface === "daily") return state;
@@ -178,6 +182,7 @@ export function reduce(state: GameState, action: Action): GameState {
         campaign: freshSlot(action.puzzle),
         undo: [],
         coachLine: "",
+        look: null,
       };
     case "choose-tier":
       return chooseTier(state, action.tier, action.fresh);
@@ -197,7 +202,7 @@ export function reduce(state: GameState, action: Action): GameState {
  */
 function chooseTier(state: GameState, tier: Tier, fresh?: FreshTier): GameState {
   if (state.tier === tier) {
-    return state.surface === "tier" ? state : { ...state, surface: "tier" };
+    return state.surface === "tier" ? state : { ...state, surface: "tier", look: null };
   }
   const existing = state.savedTiers[tier];
   if (!existing && !fresh) return state;
@@ -239,6 +244,7 @@ function resumeTier(
     surface: "tier",
     daily: state.daily,
     stars: state.stars,
+    look: null,
   };
 }
 
@@ -261,6 +267,7 @@ function beginFresh(
     surface: "tier" as const,
     daily: state.daily,
     stars: state.stars,
+    look: null,
   };
   if (fresh.mode === "campaign") {
     return {
@@ -334,6 +341,7 @@ function reset(state: GameState): GameState {
     undo: [],
     puzzleStreak: started ? 0 : state.puzzleStreak,
     coachLine: started ? "Puzzle streak reset." : "Back to the givens.",
+    look: null,
   });
 }
 
@@ -341,8 +349,18 @@ function hint(state: GameState, today: string): GameState {
   if (state.surface === "daily" && state.daily) return dailyHint(state, state.daily, today);
   const slot = activeSlot(state);
   if (slot.won) return state;
-  const force = findHint(slot.grid, slot.puzzle.rules);
-  if (!force) return { ...state, coachLine: "No forced cell. That hint was free." };
+  const ready = state.look ? forceOnLook(slot.grid, slot.puzzle.rules, state.look) : null;
+  if (state.look && ready) return fillHint(state, slot, ready, today);
+  return showLook(state, slot);
+}
+
+function showLook(state: GameState, slot: BoardSlot): GameState {
+  const look = findLook(slot.grid, slot.puzzle.rules);
+  if (!look) return { ...state, look: null, coachLine: "No forced cell. That hint was free." };
+  return { ...state, look, coachLine: lookSentence(look) };
+}
+
+function fillHint(state: GameState, slot: BoardSlot, force: Force, today: string): GameState {
   const cost = hintCost(slot.puzzle.tier);
   if (state.points < cost) return { ...state, coachLine: `A hint costs ${cost} points.` };
   const placed = placeDigit(slot.grid, force.row, force.col, force.digit, slot.puzzle.rules);
@@ -355,30 +373,32 @@ function hint(state: GameState, today: string): GameState {
     today,
     line,
     charged,
+    { look: null },
   );
 }
 
 function switchCampaign(state: GameState): GameState {
   if (state.surface === "daily") return state;
   if (state.mode === "campaign") return state;
-  return { ...state, mode: "campaign", undo: [], coachLine: "" };
+  return { ...state, mode: "campaign", undo: [], coachLine: "", look: null };
 }
 
 function switchPractice(state: GameState, puzzle: PuzzleView): GameState {
   if (state.surface === "daily") return state;
   if (state.mode === "practice") return state;
   const practice = state.practice ?? freshSlot(puzzle);
-  return { ...state, mode: "practice", practice, undo: [], coachLine: "" };
+  return { ...state, mode: "practice", practice, undo: [], coachLine: "", look: null };
 }
 
 function playDaily(state: GameState, day: string, puzzle?: PuzzleView): GameState {
   if (state.daily?.day === day) {
-    return state.surface === "daily" ? state : { ...state, surface: "daily" };
+    return state.surface === "daily" ? state : { ...state, surface: "daily", look: null };
   }
   if (!puzzle) return state;
   return {
     ...state,
     surface: "daily",
+    look: null,
     daily: {
       day,
       puzzle,
@@ -501,17 +521,25 @@ function dailyReset(state: GameState, daily: DailyBoard): GameState {
       undo: [],
       coachLine: started ? "Puzzle streak reset." : "Back to the givens.",
     },
+    look: null,
   };
 }
 
 function dailyHint(state: GameState, daily: DailyBoard, today: string): GameState {
   if (daily.won) return state;
-  const force = findHint(daily.grid, daily.puzzle.rules);
-  if (!force) {
-    return { ...state, daily: { ...daily, coachLine: "No forced cell. That hint was free." } };
+  const ready = state.look ? forceOnLook(daily.grid, daily.puzzle.rules, state.look) : null;
+  if (state.look && ready) {
+    const cost = hintCost(daily.puzzle.tier);
+    if (state.points < cost) return { ...state, daily: { ...daily, coachLine: `A hint costs ${cost} points.` } };
+    const placed = placeDigit(daily.grid, ready.row, ready.col, ready.digit, daily.puzzle.rules);
+    if (!placed.ok) return { ...state, daily: { ...daily, coachLine: placed.rejection.message } };
+    const line = explainForce(daily.grid, ready);
+    const charged = chargeHint(state.points, daily.puzzle.tier);
+    return { ...dailyApply(state, { ...daily, grid: placed.grid, hintsUsed: daily.hintsUsed + 1 }, today, line, charged), look: null };
   }
-  const placed = placeDigit(daily.grid, force.row, force.col, force.digit, daily.puzzle.rules);
-  if (!placed.ok) return { ...state, daily: { ...daily, coachLine: placed.rejection.message } };
-  const line = explainForce(daily.grid, force);
-  return dailyApply(state, { ...daily, grid: placed.grid, hintsUsed: daily.hintsUsed + 1 }, today, line, state.points);
+  const look = findLook(daily.grid, daily.puzzle.rules);
+  if (!look) {
+    return { ...state, look: null, daily: { ...daily, coachLine: "No forced cell. That hint was free." } };
+  }
+  return { ...state, look, daily: { ...daily, coachLine: lookSentence(look) } };
 }

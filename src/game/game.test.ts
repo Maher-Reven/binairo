@@ -32,6 +32,10 @@ function playToWin(seed = linePuzzle()) {
   return state;
 }
 
+function hintFill(state: GameState, today = TODAY): GameState {
+  return reduce(reduce(state, { type: "hint", today }), { type: "hint", today });
+}
+
 describe("play", () => {
   it("refuses an illegal digit and leaves the board untouched", () => {
     const start = createGame(linePuzzle());
@@ -87,7 +91,7 @@ describe("play", () => {
       day: "2026-11-20",
       puzzle: linePuzzle(),
     });
-    const hinted = reduce(started, { type: "hint", today: "2026-11-20" });
+    const hinted = hintFill(started, "2026-11-20");
     expect(hinted.daily?.coachLine).toBe("No-triple forces 0, because 1 1 _ would be three 1s in a row.");
     expect(hinted.points).toBe(0);
     expect(hinted.daily?.hintsUsed).toBe(1);
@@ -98,7 +102,7 @@ describe("play", () => {
   });
 
   it("gives a junior hint for free and explains the technique", () => {
-    const hinted = reduce(createGame(linePuzzle()), { type: "hint", today: TODAY });
+    const hinted = hintFill(createGame(linePuzzle()));
     expect(activeSlot(hinted).grid[0][2]).toBe(0);
     expect(hinted.points).toBe(0);
     expect(hinted.coachLine).toBe("No-triple forces 0, because 1 1 _ would be three 1s in a row.");
@@ -106,14 +110,15 @@ describe("play", () => {
 
   it("charges a medium hint and refuses one the player cannot afford", () => {
     const rich = { ...createGame(linePuzzle("medium")), points: 12 };
-    const hinted = reduce(rich, { type: "hint", today: TODAY });
+    const hinted = hintFill(rich);
     expect(hinted.points).toBe(2);
     expect(activeSlot(hinted).grid[0][2]).toBe(0);
     const undone = reduce(hinted, { type: "undo" });
     expect(undone.points).toBe(12);
     expect(activeSlot(undone).grid[0][2]).toBeNull();
 
-    const broke = reduce(createGame(linePuzzle("medium")), { type: "hint", today: TODAY });
+    const looked = reduce(createGame(linePuzzle("medium")), { type: "hint", today: TODAY });
+    const broke = reduce(looked, { type: "hint", today: TODAY });
     expect(broke.points).toBe(0);
     expect(activeSlot(broke).grid[0][2]).toBeNull();
     expect(broke.coachLine).toBe("A hint costs 10 points.");
@@ -316,7 +321,7 @@ describe("undo", () => {
   it("does not refund a hint or move the streak when a later placement is undone", () => {
     const puzzle = linePuzzle("medium");
     const rich = { ...createGame(puzzle), points: 40, puzzleStreak: 3 };
-    const hinted = reduce(rich, { type: "hint", today: TODAY });
+    const hinted = hintFill(rich);
     expect(hinted.points).toBe(30);
     expect(activeSlot(hinted).grid[0][2]).toBe(0);
     const placed = reduce(reduce(hinted, { type: "select", tool: 1 }), {
@@ -525,7 +530,7 @@ describe("daily board", () => {
     expect(rejected.coachLine).toBe(medium.coachLine);
     expect(rejected.campaign.grid).toEqual(medium.campaign.grid);
 
-    const hinted = reduce(reduce(daily, { type: "select", tool: 0 }), { type: "hint", today: TODAY });
+    const hinted = hintFill(reduce(daily, { type: "select", tool: 0 }));
     expect(hinted.daily?.hintsUsed).toBe(1);
     expect(hinted.daily?.grid[0][2]).toBe(0);
     expect(hinted.points).toBe(medium.points);
@@ -680,7 +685,7 @@ describe("lesson stars", () => {
     const clean = winLine(reduce(dirty, { type: "reset" }), TODAY);
     expect(clean.stars["line-no-triple"]).toEqual({ clean: true, par: true, hint: true });
 
-    const hinted = reduce(reduce(clean, { type: "reset" }), { type: "hint", today: TODAY });
+    const hinted = hintFill(reduce(clean, { type: "reset" }));
     const finished = reduce(reduce(hinted, { type: "select", tool: 1 }), { type: "tap", row: 0, col: 3, today: TODAY });
     expect(finished.campaign.hintsUsed).toBe(1);
     expect(finished.stars["line-no-triple"]).toEqual({ clean: true, par: true, hint: true });
@@ -765,7 +770,7 @@ describe("finish screen", () => {
     expect(finishSummary(over)?.par).toBe(2);
     expect(finishSummary(over)?.stars).toEqual({ clean: true, par: false, hint: true });
 
-    const hinted = reduce(createGame(puzzle), { type: "hint", today: TODAY });
+    const hinted = hintFill(createGame(puzzle));
     const finished = reduce(reduce(hinted, { type: "select", tool: 1 }), { type: "tap", row: 0, col: 3, today: TODAY });
     expect(finishSummary(finished)?.stars).toEqual({ clean: true, par: true, hint: false });
     expect(finishSummary(reduce(finished, { type: "undo" }))).toBeNull();
@@ -832,5 +837,95 @@ describe("finish screen", () => {
     expect(activeSlot(practiced).won).toBe(false);
     expect(practiced.savedTiers.junior?.campaign.won).toBe(true);
     expect(practiced.campaign.won).toBe(true);
+  });
+});
+
+describe("two-step hint", () => {
+  it("looks without filling, charging, or spending the no-hint star", () => {
+    const puzzle = linePuzzle();
+    puzzle.id = "line-no-triple";
+    const looked = reduce(createGame(puzzle), { type: "hint", today: TODAY });
+    expect(activeSlot(looked).grid).toEqual(puzzle.givens);
+    expect(looked.points).toBe(0);
+    expect(looked.campaign.hintsUsed).toBe(0);
+    expect(looked.campaign.moves).toBe(0);
+    expect(looked.look).toEqual({ axis: "row", index: 0, rule: "no-triple" });
+    expect(looked.coachLine).toBe("Look at this row. The rule is no-triple.");
+
+    const won = winLine(looked, TODAY);
+    expect(won.stars["line-no-triple"]).toEqual({ clean: true, par: true, hint: true });
+    expect(won.campaign.hintsUsed).toBe(0);
+  });
+
+  it("fills on the second tap and charges the tier cost", () => {
+    const medium = { ...createGame(linePuzzle("medium")), points: 12 };
+    const looked = reduce(medium, { type: "hint", today: TODAY });
+    expect(looked.points).toBe(12);
+    expect(activeSlot(looked).grid[0][2]).toBeNull();
+    const filled = reduce(looked, { type: "hint", today: TODAY });
+    expect(filled.points).toBe(2);
+    expect(activeSlot(filled).grid[0][2]).toBe(0);
+    expect(filled.campaign.hintsUsed).toBe(1);
+    expect(filled.look).toBeNull();
+    expect(filled.coachLine).toBe("No-triple forces 0, because 1 1 _ would be three 1s in a row.");
+
+    const intermediate = hintFill({ ...createGame(linePuzzle("intermediate")), points: 25 });
+    expect(intermediate.points).toBe(0);
+    expect(activeSlot(intermediate).grid[0][2]).toBe(0);
+    expect(intermediate.campaign.hintsUsed).toBe(1);
+  });
+
+  it("fills a junior cell for free on the second tap", () => {
+    const looked = reduce(createGame(linePuzzle()), { type: "hint", today: TODAY });
+    const filled = reduce(looked, { type: "hint", today: TODAY });
+    expect(filled.points).toBe(0);
+    expect(activeSlot(filled).grid[0][2]).toBe(0);
+    expect(filled.campaign.hintsUsed).toBe(1);
+    expect(filled.coachLine).toBe("No-triple forces 0, because 1 1 _ would be three 1s in a row.");
+  });
+
+  it("leaves an empty result free", () => {
+    const puzzle = linePuzzle("advanced");
+    puzzle.givens = [[1, null, null, null, null, 0]];
+    const state = { ...createGame(puzzle), points: 40 };
+    const next = reduce(state, { type: "hint", today: TODAY });
+    expect(next.points).toBe(40);
+    expect(next.look).toBeNull();
+    expect(next.campaign.hintsUsed).toBe(0);
+    expect(activeSlot(next).grid).toEqual(puzzle.givens);
+    expect(next.coachLine).toBe("No forced cell. That hint was free.");
+  });
+
+  it("turns a stale look into a new look instead of a fill", () => {
+    const puzzle = linePuzzle("medium");
+    puzzle.givens = [[1, 1, null, null, null, null]];
+    const rich = { ...createGame(puzzle), points: 30 };
+    const looked = reduce(rich, { type: "hint", today: TODAY });
+    expect(looked.look).toEqual({ axis: "row", index: 0, rule: "no-triple" });
+    const placed = reduce(looked, { type: "tap", row: 0, col: 2, today: TODAY });
+    expect(activeSlot(placed).grid[0]).toEqual([1, 1, 0, null, null, null]);
+    expect(placed.look).toEqual(looked.look);
+    const again = reduce(placed, { type: "hint", today: TODAY });
+    expect(again.points).toBe(30);
+    expect(again.campaign.hintsUsed).toBe(0);
+    expect(activeSlot(again).grid[0]).toEqual([1, 1, 0, null, null, null]);
+    expect(again.look).toBeNull();
+    expect(again.coachLine).toBe("No forced cell. That hint was free.");
+
+    const open = linePuzzle("intermediate");
+    open.givens = [[1, null, null, null, null, null]];
+    const started = { ...createGame(open), points: 50 };
+    const quiet = reduce(started, { type: "hint", today: TODAY });
+    expect(quiet.look).toBeNull();
+    const seeded = reduce(reduce(quiet, { type: "select", tool: 1 }), { type: "tap", row: 0, col: 1, today: TODAY });
+    const seen = reduce(seeded, { type: "hint", today: TODAY });
+    expect(seen.look).toEqual({ axis: "row", index: 0, rule: "no-triple" });
+    expect(seen.points).toBe(50);
+    const undone = reduce(seen, { type: "undo" });
+    const fresh = reduce(undone, { type: "hint", today: TODAY });
+    expect(activeSlot(fresh).grid).toEqual(activeSlot(undone).grid);
+    expect(fresh.points).toBe(50);
+    expect(fresh.campaign.hintsUsed).toBe(0);
+    expect(fresh.look).toBeNull();
   });
 });

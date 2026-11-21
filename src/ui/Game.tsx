@@ -388,8 +388,9 @@ export function Game({ storage }: GameProps) {
           givens={slot.puzzle.givens}
           cellSize={cell}
           disabled={slot.won || busy}
-          active={active}
-          onTap={(row, col) => play({ type: "tap", row, col, today: todayFrom() })}
+        active={active}
+        look={state.look}
+        onTap={(row, col) => play({ type: "tap", row, col, today: todayFrom() })}
         />
       )}
     </BoardViewport>
