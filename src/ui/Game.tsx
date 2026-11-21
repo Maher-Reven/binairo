@@ -3,13 +3,15 @@ import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View, useWindo
 import { TIER_ORDER, tierStart } from "../domain/campaign";
 import { formatElapsed } from "../domain/daily";
 import type { Grid, Tier } from "../domain/types";
-import { campaignPuzzle, dailyPuzzle, hasNextLesson, newPracticePuzzle, practicePuzzle, practicePuzzleAt } from "../game/puzzles";
+import { finishNext, finishPrimaryLabel, finishSummary } from "../game/finish";
+import { campaignPuzzle, dailyPuzzle, newPracticePuzzle, practicePuzzle, practicePuzzleAt } from "../game/puzzles";
 import { activeSlot, createGame, createPracticeGame, reduce } from "../game/reduce";
 import type { Action, GameState } from "../game/types";
 import { loadGame, saveGame, todayFrom, type KeyValueStore } from "../persistence/storage";
 import { Board } from "./Board";
 import { BoardViewport } from "./BoardViewport";
 import { Coach } from "./Coach";
+import { Finish } from "./Finish";
 import { Pad } from "./Pad";
 import { shareResult } from "./shareResult";
 import { TierPicker } from "./TierPicker";
@@ -58,6 +60,7 @@ export function Game({ storage }: GameProps) {
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  const sitting = useRef<{ key: string; started: number; frozen: number | null } | null>(null);
   const liveOrigin = useRef<number | null>(null);
   const clockDay =
     state != null && state.surface === "daily" && state.daily != null && !state.daily.won && !picking
@@ -254,13 +257,13 @@ export function Game({ storage }: GameProps) {
 
   const slot = activeSlot(state);
   const onDaily = state.surface === "daily";
-  const nextReady = !onDaily && state.mode === "campaign" && slot.won && hasNextLesson(state.campaignIndex);
-  const campaignDone = !onDaily && state.mode === "campaign" && slot.won && !hasNextLesson(state.campaignIndex);
-  const primaryLabel =
-    onDaily ? null : state.mode === "practice" ? "New board" : nextReady ? "Next lesson" : campaignDone ? "Campaign complete" : null;
+  const summary = finishSummary(state);
+  const next = summary ? finishNext(state) : null;
+  const primaryLabel = !onDaily && !slot.won && state.mode === "practice" ? "New board" : null;
   const liveMs =
     clocking && tick >= 0 && liveOrigin.current != null ? Math.max(0, Date.now() - liveOrigin.current) : 0;
   const elapsedLabel = formatElapsed((state.daily?.elapsedMs ?? 0) + liveMs);
+  const tierTime = sittingLabel(sitting, puzzleKey, slot.won);
 
   const build = (make: (current: GameState) => GameState) => {
     setBusy(true);
@@ -281,19 +284,30 @@ export function Game({ storage }: GameProps) {
   };
 
   const onPrimary = () => {
-    if (busy || campaignDone) return;
-    if (state.mode === "practice") {
-      build((current) => {
-        const seed = (Date.now() ^ (activeSlot(current).puzzle.seed + 1)) >>> 0;
-        const active = activeSlot(current).puzzle;
-        return reduce(current, { type: "new-practice", puzzle: newPracticePuzzle(current.campaignIndex, active, seed) });
-      });
+    if (busy || state.mode !== "practice" || slot.won) return;
+    build((current) => {
+      const seed = (Date.now() ^ (activeSlot(current).puzzle.seed + 1)) >>> 0;
+      const active = activeSlot(current).puzzle;
+      return reduce(current, { type: "new-practice", puzzle: newPracticePuzzle(current.campaignIndex, active, seed) });
+    });
+  };
+
+  const onFinishPrimary = () => {
+    if (busy || !next) return;
+    if (next.kind === "picker") {
+      backToPicker();
       return;
     }
-    if (nextReady) {
-      const index = state.campaignIndex + 1;
+    if (next.kind === "lesson") {
+      const index = next.campaignIndex;
       build((current) => reduce(current, { type: "next-lesson", puzzle: campaignPuzzle(index), campaignIndex: index }));
+      return;
     }
+    build((current) => {
+      const seed = (Date.now() ^ (activeSlot(current).puzzle.seed + 1)) >>> 0;
+      const active = activeSlot(current).puzzle;
+      return reduce(current, { type: "new-practice", puzzle: newPracticePuzzle(current.campaignIndex, active, seed) });
+    });
   };
 
   const onMode = (mode: "campaign" | "practice") => {
@@ -340,7 +354,6 @@ export function Game({ storage }: GameProps) {
       canHint={!slot.won}
       canReset
       primaryLabel={primaryLabel}
-      primaryDisabled={campaignDone}
       busy={busy}
       onSelect={(tool) => play({ type: "select", tool })}
       onUndo={() => play({ type: "undo" })}
@@ -354,14 +367,31 @@ export function Game({ storage }: GameProps) {
 
   const board = (
     <BoardViewport cellSize={cell} minCell={MIN_CELL} maxCell={MAX_CELL} onCellSize={setCell}>
-      <Board
-        grid={slot.grid}
-        givens={slot.puzzle.givens}
-        cellSize={cell}
-        disabled={slot.won || busy}
-        active={active}
-        onTap={(row, col) => play({ type: "tap", row, col, today: todayFrom() })}
-      />
+      {summary && next ? (
+        <Finish
+          timeLabel={onDaily ? elapsedLabel : tierTime}
+          moves={summary.moves}
+          par={summary.par}
+          stars={summary.stars}
+          earnedPoints={summary.earnedPoints}
+          points={summary.points}
+          puzzleStreak={summary.puzzleStreak}
+          dailyStreak={summary.dailyStreak}
+          primaryLabel={finishPrimaryLabel(next)}
+          busy={busy}
+          onPrimary={onFinishPrimary}
+          onBack={backToPicker}
+        />
+      ) : (
+        <Board
+          grid={slot.grid}
+          givens={slot.puzzle.givens}
+          cellSize={cell}
+          disabled={slot.won || busy}
+          active={active}
+          onTap={(row, col) => play({ type: "tap", row, col, today: todayFrom() })}
+        />
+      )}
     </BoardViewport>
   );
 
@@ -384,6 +414,24 @@ export function Game({ storage }: GameProps) {
       )}
     </View>
   );
+}
+
+function sittingLabel(
+  sitting: { current: { key: string; started: number; frozen: number | null } | null },
+  key: string,
+  won: boolean,
+): string {
+  const now = Date.now();
+  if (sitting.current?.key !== key) {
+    sitting.current = { key, started: now, frozen: won ? 0 : null };
+  }
+  const current = sitting.current;
+  if (won && current.frozen == null) current.frozen = Math.max(0, now - current.started);
+  if (!won && current.frozen != null) {
+    current.frozen = null;
+    current.started = now;
+  }
+  return formatElapsed(current.frozen ?? Math.max(0, now - current.started));
 }
 
 function continuedTiers(state: GameState | null): readonly Tier[] {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { LESSONS } from "../domain/campaign";
 import { dailySeed, dailyShareLine } from "../domain/daily";
+import { completionPoints } from "../domain/scoring";
+import { finishNext, finishSummary } from "./finish";
 import { activeSlot, createGame, reduce } from "./reduce";
 import { dailyPuzzle } from "./puzzles";
 import type { GameState, PuzzleView } from "./types";
@@ -712,5 +715,122 @@ describe("lesson stars", () => {
     expect(played.savedTiers.junior?.campaign.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
     expect(played.campaign.grid[0][2]).toBeNull();
     expect(played.daily?.grid[0][2]).toBe(0);
+  });
+});
+
+describe("finish screen", () => {
+  it("reports moves, par, points, and both streaks for this finish", () => {
+    const puzzle = linePuzzle();
+    puzzle.id = "line-no-triple";
+    const won = winLine(createGame(puzzle), TODAY);
+    const summary = finishSummary(won);
+    expect(summary).toEqual({
+      moves: 2,
+      par: 2,
+      stars: { clean: true, par: true, hint: true },
+      earnedPoints: 66,
+      points: 66,
+      puzzleStreak: 1,
+      dailyStreak: 1,
+    });
+    expect(summary?.earnedPoints).toBe(completionPoints(puzzle.size, won.puzzleStreak));
+
+    const again = winLine(reduce(won, { type: "new-practice", puzzle: linePuzzle() }), TODAY);
+    const second = finishSummary(again);
+    expect(second?.moves).toBe(2);
+    expect(second?.par).toBe(2);
+    expect(second?.earnedPoints).toBe(completionPoints(6, 2));
+    expect(second?.points).toBe(66 + 72);
+    expect(second?.puzzleStreak).toBe(2);
+    expect(second?.dailyStreak).toBe(1);
+    expect(second?.stars).toBeNull();
+  });
+
+  it("shows the three stars this lesson finish earned", () => {
+    const puzzle = linePuzzle();
+    puzzle.id = "line-no-triple";
+    const dirty = winLine(
+      reduce(reduce(createGame(puzzle), { type: "select", tool: 1 }), { type: "tap", row: 0, col: 2, today: TODAY }),
+      TODAY,
+    );
+    expect(finishSummary(dirty)?.stars).toEqual({ clean: false, par: true, hint: true });
+    expect(dirty.stars["line-no-triple"]).toEqual({ clean: false, par: true, hint: true });
+
+    let over = createGame(puzzle);
+    over = reduce(over, { type: "tap", row: 0, col: 2, today: TODAY });
+    over = reduce(reduce(over, { type: "select", tool: "erase" }), { type: "tap", row: 0, col: 2, today: TODAY });
+    over = reduce(reduce(over, { type: "select", tool: 0 }), { type: "tap", row: 0, col: 2, today: TODAY });
+    over = reduce(reduce(over, { type: "select", tool: 1 }), { type: "tap", row: 0, col: 3, today: TODAY });
+    expect(finishSummary(over)?.moves).toBe(4);
+    expect(finishSummary(over)?.par).toBe(2);
+    expect(finishSummary(over)?.stars).toEqual({ clean: true, par: false, hint: true });
+
+    const hinted = reduce(createGame(puzzle), { type: "hint", today: TODAY });
+    const finished = reduce(reduce(hinted, { type: "select", tool: 1 }), { type: "tap", row: 0, col: 3, today: TODAY });
+    expect(finishSummary(finished)?.stars).toEqual({ clean: true, par: true, hint: false });
+    expect(finishSummary(reduce(finished, { type: "undo" }))).toBeNull();
+    expect(reduce(finished, { type: "undo" }).points).toBe(0);
+  });
+
+  it("hides the star row on practice and on the daily board", () => {
+    const practice = winLine(reduce(createGame(linePuzzle()), { type: "switch-practice", puzzle: linePuzzle() }), TODAY);
+    expect(practice.mode).toBe("practice");
+    expect(finishSummary(practice)?.stars).toBeNull();
+    expect(finishNext(practice)).toEqual({ kind: "practice" });
+
+    const junior = playToWin();
+    const mediumPuzzle = linePuzzle("medium");
+    mediumPuzzle.id = "grid8";
+    const medium = reduce(junior, {
+      type: "choose-tier",
+      tier: "medium",
+      fresh: { mode: "campaign", puzzle: mediumPuzzle, campaignIndex: 4 },
+    });
+    const daily = winLine(reduce(medium, { type: "play-daily", day: "2026-11-20", puzzle: linePuzzle() }), "2026-11-20");
+    expect(finishSummary(daily)?.stars).toBeNull();
+    expect(finishSummary(daily)?.puzzleStreak).toBe(2);
+    expect(finishSummary(daily)?.dailyStreak).toBe(2);
+    expect(finishNext(daily)).toEqual({ kind: "picker" });
+    expect(daily.savedTiers.junior?.campaign.won).toBe(true);
+    expect(daily.campaign.grid).toEqual(medium.campaign.grid);
+  });
+
+  it("starts the next lesson in the tier, or practice, and keeps the other tiers", () => {
+    const junior = playToWin();
+    expect(finishNext(junior)).toEqual({ kind: "lesson", campaignIndex: 1 });
+
+    const mediumPuzzle = linePuzzle("medium");
+    mediumPuzzle.id = "grid8";
+    const medium = winLine(
+      reduce(junior, {
+        type: "choose-tier",
+        tier: "medium",
+        fresh: { mode: "campaign", puzzle: mediumPuzzle, campaignIndex: 4 },
+      }),
+      TODAY,
+    );
+    expect(finishNext(medium)).toEqual({ kind: "lesson", campaignIndex: 5 });
+    const next = reduce(medium, { type: "next-lesson", puzzle: linePuzzle("medium"), campaignIndex: 5 });
+    expect(next.campaignIndex).toBe(5);
+    expect(next.mode).toBe("campaign");
+    expect(next.campaign.won).toBe(false);
+    expect(next.savedTiers.junior?.campaign.grid).toEqual([[1, 1, 0, 1, 0, 0]]);
+
+    const lastMedium = LESSONS.findIndex((lesson, index) => lesson.tier === "medium" && LESSONS[index + 1]?.tier !== "medium");
+    const last = winLine(
+      reduce(junior, {
+        type: "choose-tier",
+        tier: "medium",
+        fresh: { mode: "campaign", puzzle: mediumPuzzle, campaignIndex: lastMedium },
+      }),
+      TODAY,
+    );
+    expect(finishNext(last)).toEqual({ kind: "practice" });
+    const practiced = reduce(last, { type: "new-practice", puzzle: linePuzzle("medium") });
+    expect(practiced.mode).toBe("practice");
+    expect(practiced.tier).toBe("medium");
+    expect(activeSlot(practiced).won).toBe(false);
+    expect(practiced.savedTiers.junior?.campaign.won).toBe(true);
+    expect(practiced.campaign.won).toBe(true);
   });
 });
