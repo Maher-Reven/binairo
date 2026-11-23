@@ -23,10 +23,10 @@ interface BoardProps {
 export function Board({ grid, givens, cellSize, disabled, active, look, onTap }: BoardProps) {
   const gap = cellSize >= 48 ? 8 : 4;
   const glyph = Math.max(16, Math.round(cellSize * 0.48));
+  const rows = grid.length;
+  const cols = grid[0]?.length ?? 0;
   const marked =
-    active != null && active.row >= 0 && active.col >= 0 && active.row < grid.length && active.col < grid[0].length
-      ? active
-      : null;
+    active != null && active.row >= 0 && active.col >= 0 && active.row < rows && active.col < cols ? active : null;
   return (
     <View style={{ gap }} accessibilityRole="none">
       {grid.map((row, r) => (
@@ -35,12 +35,15 @@ export function Board({ grid, givens, cellSize, disabled, active, look, onTap }:
             const given = givens[r][c] != null;
             const ink = cell === 0 ? theme.zero : theme.one;
             const glyphColor = cell === 0 ? theme.zeroInk : theme.oneInk;
-            const onCell = marked != null && r === marked.row && c === marked.col;
-            const onLine = marked != null && (r === marked.row || c === marked.col);
+            const onRow = marked != null && r === marked.row;
+            const onCol = marked != null && c === marked.col;
+            const onCell = onRow && onCol;
+            const onLine = onRow || onCol;
             const onLook =
               look != null &&
               ((look.axis === "row" && r === look.index) || (look.axis === "column" && c === look.index));
             const label = `Row ${r + 1}, column ${c + 1}, ${cell == null ? "empty" : cell}${given ? ", given" : ""}${onCell ? ", active" : onLine ? ", highlighted" : ""}${onLook ? ", hint look" : ""}`;
+            const edge = onCell ? 3 : 2;
             return (
               <Pressable
                 key={c}
@@ -56,14 +59,20 @@ export function Board({ grid, givens, cellSize, disabled, active, look, onTap }:
                     width: cellSize,
                     height: cellSize,
                     borderRadius: Math.max(6, Math.round(cellSize * 0.16)),
-                    borderColor: onCell ? theme.ink : onLine ? theme.gold : onLook ? theme.look : theme.line,
-                    borderWidth: onLine || onLook ? 4 : 1,
+                    borderTopWidth: onRow ? edge : onLook ? 4 : 1,
+                    borderBottomWidth: onRow ? edge : onLook ? 4 : 1,
+                    borderLeftWidth: onCol ? edge : onLook ? 4 : 1,
+                    borderRightWidth: onCol ? edge : onLook ? 4 : 1,
+                    borderTopColor: onRow ? theme.crossEdge : onLook ? theme.look : theme.line,
+                    borderBottomColor: onRow ? theme.crossEdge : onLook ? theme.look : theme.line,
+                    borderLeftColor: onCol ? theme.crossEdge : onLook ? theme.look : theme.line,
+                    borderRightColor: onCol ? theme.crossEdge : onLook ? theme.look : theme.line,
                     backgroundColor:
                       cell == null
-                        ? onCell
-                          ? theme.crossActive
-                          : onLook
-                            ? theme.lookWash
+                        ? onLook
+                          ? theme.lookWash
+                          : onCell
+                            ? theme.crossActive
                             : onLine
                               ? theme.cross
                               : theme.white
@@ -79,10 +88,8 @@ export function Board({ grid, givens, cellSize, disabled, active, look, onTap }:
                     <Text style={{ color: glyphColor, fontSize: glyph, fontWeight: "700" }}>{cell}</Text>
                   ) : null}
                 </View>
-                {onLine || onLook ? (
+                {onLook ? (
                   <View pointerEvents="none" style={styles.marks}>
-                    {onLine && r === marked.row ? <View style={styles.rowBar} /> : null}
-                    {onLine && c === marked.col ? <View style={styles.colBar} /> : null}
                     {look?.axis === "row" && r === look.index ? <View style={styles.lookRow} /> : null}
                     {look?.axis === "column" && c === look.index ? <View style={styles.lookCol} /> : null}
                   </View>
@@ -115,22 +122,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-  },
-  rowBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 4,
-    backgroundColor: theme.gold,
-  },
-  colBar: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: 4,
-    backgroundColor: theme.gold,
   },
   lookRow: {
     position: "absolute",

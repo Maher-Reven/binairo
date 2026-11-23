@@ -224,6 +224,7 @@ export function Game({ storage }: GameProps) {
   const backToPicker = () => {
     if (busy) return;
     setPickerError(null);
+    setActive(null);
     setPicking(true);
   };
 
