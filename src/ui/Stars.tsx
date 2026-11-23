@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import type { LessonStars } from "../domain/stars";
-import { sans, theme } from "./theme";
+import { sans, space, theme, type } from "./theme";
 
 const NAMES = [
   ["Clean", "clean"],
@@ -31,16 +31,16 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginTop: 4,
+    gap: space.sm,
+    marginTop: space.xs,
   },
   star: {
     fontFamily: sans,
     color: theme.coachMuted,
-    fontSize: 13,
+    fontSize: type.small,
     fontWeight: "600",
   },
   on: {
-    color: theme.gold,
+    color: theme.accentOnDark,
   },
 });

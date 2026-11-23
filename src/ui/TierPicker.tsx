@@ -4,7 +4,7 @@ import { dailyStreakLabel, hintCost } from "../domain/scoring";
 import { blankStars, starSummary } from "../domain/stars";
 import type { LessonStarsMap } from "../domain/stars";
 import type { Tier } from "../domain/types";
-import { pressable, sans, serif, theme } from "./theme";
+import { pressable, radius, sans, serif, space, theme, type } from "./theme";
 
 interface TierPickerProps {
   busy: boolean;
@@ -171,10 +171,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
-    paddingTop: Platform.OS === "ios" ? 54 : 28,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    gap: 8,
+    paddingTop: Platform.OS === "ios" ? 54 : space.xl,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.xl,
+    gap: space.sm,
   },
   contentWide: {
     width: "100%",
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   wordmark: {
     fontFamily: sans,
     color: theme.gold,
-    fontSize: 12,
+    fontSize: type.caption,
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
@@ -192,13 +192,13 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: serif,
     color: theme.ink,
-    fontSize: 36,
-    marginTop: 4,
+    fontSize: type.display,
+    marginTop: space.xs,
   },
   lead: {
     fontFamily: sans,
     color: theme.inkSoft,
-    fontSize: 16,
+    fontSize: type.body,
     lineHeight: 22,
   },
   streak: {
@@ -206,36 +206,36 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     justifyContent: "space-between",
     backgroundColor: theme.white,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: theme.line,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 4,
-    marginBottom: 8,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    marginTop: space.xs,
+    marginBottom: space.sm,
   },
   streakName: {
     fontFamily: serif,
     color: theme.ink,
-    fontSize: 22,
+    fontSize: type.title,
   },
   streakValue: {
     fontFamily: serif,
     color: theme.gold,
-    fontSize: 28,
+    fontSize: type.display,
     fontVariant: ["tabular-nums"],
   },
   list: {
-    gap: 10,
+    gap: space.sm,
   },
   card: {
     backgroundColor: theme.white,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: theme.line,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 2,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.xs,
   },
   daily: {
     borderColor: theme.gold,
@@ -243,60 +243,60 @@ const styles = StyleSheet.create({
   name: {
     fontFamily: serif,
     color: theme.ink,
-    fontSize: 26,
+    fontSize: type.title,
   },
   sizes: {
     fontFamily: sans,
     color: theme.ink,
-    fontSize: 15,
+    fontSize: type.body,
     fontWeight: "600",
   },
   detail: {
     fontFamily: sans,
     color: theme.inkSoft,
-    fontSize: 14,
+    fontSize: type.small,
     lineHeight: 20,
-    marginTop: 2,
+    marginTop: space.xs,
   },
   starKey: {
     fontFamily: sans,
     color: theme.inkSoft,
-    fontSize: 12,
-    marginTop: 8,
+    fontSize: type.caption,
+    marginTop: space.sm,
   },
   lessonLine: {
     fontFamily: sans,
     color: theme.ink,
-    fontSize: 14,
+    fontSize: type.small,
     fontWeight: "600",
   },
   starOn: {
     color: theme.gold,
   },
   starOff: {
-    color: theme.line,
+    color: theme.inkSoft,
   },
   status: {
     fontFamily: sans,
     color: theme.inkSoft,
-    fontSize: 15,
-    marginTop: 8,
+    fontSize: type.body,
+    marginTop: space.sm,
   },
   error: {
     fontFamily: sans,
     color: theme.one,
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 8,
+    fontSize: type.body,
+    lineHeight: 22,
+    marginTop: space.sm,
   },
   back: {
     fontFamily: sans,
-    color: theme.ink,
-    fontSize: 16,
+    color: theme.inkSoft,
+    fontSize: type.body,
     fontWeight: "600",
-    marginTop: 12,
+    marginTop: space.md,
     minHeight: 44,
-    textAlignVertical: "center",
+    lineHeight: 44,
   },
   dim: {
     opacity: 0.45,

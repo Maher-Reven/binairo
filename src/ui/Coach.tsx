@@ -4,7 +4,7 @@ import { dailyShareLine } from "../domain/daily";
 import { hintCost } from "../domain/scoring";
 import { attemptStatus, blankStars, movePar } from "../domain/stars";
 import type { BoardSlot, GameState } from "../game/types";
-import { pressable, sans, serif, theme } from "./theme";
+import { pressable, radius, sans, serif, space, theme, type } from "./theme";
 import { StarReadout } from "./Stars";
 
 interface CoachProps {
@@ -138,11 +138,11 @@ function Stat({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.coach,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
-    gap: 6,
+    borderRadius: radius.lg,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    paddingBottom: space.md,
+    gap: space.sm,
   },
   header: {
     flexDirection: "row",
@@ -151,63 +151,66 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     fontFamily: sans,
-    color: theme.gold,
-    fontSize: 12,
+    color: theme.accentOnDark,
+    fontSize: type.caption,
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
   },
   back: {
     fontFamily: sans,
-    color: theme.gold,
-    fontSize: 15,
+    color: theme.accentOnDark,
+    fontSize: type.body,
     fontWeight: "700",
-    minHeight: 32,
+    minHeight: 44,
+    lineHeight: 44,
   },
   modes: {
     flexDirection: "row",
-    gap: 16,
+    gap: space.lg,
   },
   mode: {
     fontFamily: sans,
     color: theme.coachMuted,
-    fontSize: 14,
+    fontSize: type.small,
     fontWeight: "600",
+    minHeight: 44,
+    lineHeight: 44,
   },
   modeOn: {
-    color: theme.gold,
+    color: theme.accentOnDark,
   },
   kicker: {
     fontFamily: serif,
     color: theme.coachText,
-    fontSize: 28,
-    marginTop: 4,
+    fontSize: type.display,
+    marginTop: space.xs,
   },
   where: {
     fontFamily: sans,
     color: theme.coachMuted,
-    fontSize: 13,
+    fontSize: type.caption,
     letterSpacing: 0.3,
   },
   teach: {
     fontFamily: sans,
     color: theme.coachText,
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 4,
+    fontSize: type.body,
+    lineHeight: 22,
+    marginTop: space.xs,
   },
   attempt: {
     fontFamily: sans,
     color: theme.coachMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2,
+    fontSize: type.caption,
+    lineHeight: 16,
+    marginTop: space.xs,
   },
   event: {
     fontFamily: sans,
     color: theme.coachText,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: type.body,
+    lineHeight: 22,
   },
   danger: {
     color: theme.danger,
@@ -217,51 +220,52 @@ const styles = StyleSheet.create({
   },
   stats: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
+    gap: space.md,
+    marginTop: space.sm,
   },
   stat: {
     flex: 1,
   },
   statValue: {
     fontFamily: serif,
-    color: theme.gold,
-    fontSize: 22,
+    color: theme.accentOnDark,
+    fontSize: type.title,
     fontVariant: ["tabular-nums"],
   },
   statLabel: {
     fontFamily: sans,
     color: theme.coachMuted,
-    fontSize: 11,
+    fontSize: type.caption,
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
   cost: {
     fontFamily: sans,
     color: theme.coachMuted,
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: type.caption,
+    marginTop: space.xs,
   },
   shareBlock: {
-    gap: 4,
-    marginTop: 4,
+    gap: space.xs,
+    marginTop: space.xs,
   },
   shareLine: {
     fontFamily: sans,
     color: theme.coachText,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: type.body,
+    lineHeight: 22,
   },
   shareButton: {
     fontFamily: sans,
-    color: theme.gold,
-    fontSize: 15,
+    color: theme.accentOnDark,
+    fontSize: type.body,
     fontWeight: "700",
-    minHeight: 32,
+    minHeight: 44,
+    lineHeight: 44,
   },
   shareNote: {
     fontFamily: sans,
     color: theme.coachMuted,
-    fontSize: 13,
+    fontSize: type.caption,
   },
 });

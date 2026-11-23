@@ -1,29 +1,8 @@
 import { Platform, type TextStyle, type ViewStyle } from "react-native";
+import { palette, radius, space, type } from "./palette";
 
-export const theme = {
-  paper: "#f3ecdf",
-  paperDeep: "#e6d9c4",
-  ink: "#241c16",
-  inkSoft: "#5e534a",
-  line: "#d5c4ae",
-  gold: "#c9852a",
-  zero: "#1f6a4e",
-  zeroInk: "#f4fff9",
-  one: "#a33b24",
-  oneInk: "#fff7f3",
-  coach: "#241c16",
-  coachText: "#f6f0e6",
-  coachMuted: "#d9cbb8",
-  danger: "#ffb4a2",
-  good: "#b7e0c7",
-  white: "#fffdf8",
-  /** Empty cells on the active row or column. Filled cells keep their digit color. */
-  cross: "#f0d2a4",
-  crossActive: "#e4b86a",
-  /** The hint look, distinct from the gold active row and column. */
-  look: "#2c6e9e",
-  lookWash: "#d4e6f5",
-};
+export const theme = palette;
+export { radius, space, type };
 
 export const serif = Platform.select({
   ios: "Georgia",
@@ -61,7 +40,7 @@ export const pressable: ViewStyle = Platform.OS === "web" ? ({ cursor: "pointer"
 
 export const titleType: TextStyle = {
   fontFamily: serif,
-  color: theme.coachText,
-  fontSize: 28,
-  letterSpacing: 0.4,
+  color: theme.ink,
+  fontSize: type.display,
+  letterSpacing: 0.2,
 };

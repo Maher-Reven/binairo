@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { LessonStars } from "../domain/stars";
-import { pressable, sans, serif, theme } from "./theme";
+import { pressable, radius, sans, serif, space, theme, type } from "./theme";
 
 interface FinishProps {
   timeLabel: string;
@@ -58,7 +58,7 @@ export function Finish({
       >
         <Text style={styles.primaryText}>{busy ? "Building a board…" : primaryLabel}</Text>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Back" disabled={busy} onPress={onBack} style={pressable}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Back" disabled={busy} onPress={onBack} style={[styles.backHit, pressable]}>
         <Text style={[styles.back, busy ? styles.dim : null]}>Back</Text>
       </Pressable>
     </View>
@@ -78,32 +78,32 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420,
     backgroundColor: theme.white,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: theme.line,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    gap: 8,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.lg,
+    gap: space.sm,
   },
   title: {
     fontFamily: serif,
     color: theme.ink,
-    fontSize: 32,
+    fontSize: type.display,
   },
   line: {
     fontFamily: sans,
     color: theme.ink,
-    fontSize: 16,
+    fontSize: type.body,
     lineHeight: 22,
   },
   stars: {
-    gap: 4,
-    marginVertical: 4,
+    gap: space.xs,
+    marginVertical: space.xs,
   },
   star: {
     fontFamily: sans,
     color: theme.inkSoft,
-    fontSize: 16,
+    fontSize: type.body,
     lineHeight: 22,
   },
   starOn: {
@@ -111,27 +111,32 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   primary: {
-    marginTop: 8,
-    minHeight: 52,
-    borderRadius: 14,
+    marginTop: space.sm,
+    minHeight: 48,
+    borderRadius: radius.md,
     backgroundColor: theme.ink,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: space.lg,
   },
   primaryText: {
     fontFamily: sans,
     color: theme.coachText,
-    fontSize: 17,
+    fontSize: type.body,
     fontWeight: "700",
+  },
+  backHit: {
+    minHeight: 44,
+    justifyContent: "center",
   },
   back: {
     fontFamily: sans,
-    color: theme.ink,
-    fontSize: 16,
+    color: theme.inkSoft,
+    fontSize: type.body,
     fontWeight: "700",
     textAlign: "center",
-    minHeight: 36,
+    minHeight: 44,
+    lineHeight: 44,
   },
   dim: {
     opacity: 0.45,
