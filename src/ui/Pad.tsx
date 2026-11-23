@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { hintCost } from "../domain/scoring";
 import type { Digit, Tier } from "../domain/types";
-import { pressable, sans, theme } from "./theme";
+import { pressable, radius, sans, space, theme, type } from "./theme";
 
 interface PadProps {
   selected: Digit | "erase";
@@ -47,8 +47,8 @@ export function Pad({
         <ToolButton label="Erase" selected={selected === "erase"} onPress={() => onSelect("erase")} />
       </View>
       <View style={styles.row}>
-        <ToolButton label="Undo" disabled={!canUndo || busy} onPress={onUndo} />
-        <ToolButton label={cost === 0 ? "Hint" : `Hint · ${cost}`} disabled={!canHint || busy} onPress={onHint} />
+        <ToolButton label="Undo" primary disabled={!canUndo || busy} onPress={onUndo} />
+        <ToolButton label={cost === 0 ? "Hint" : `Hint · ${cost}`} primary disabled={!canHint || busy} onPress={onHint} />
         <ToolButton label="Reset" disabled={!canReset || busy} onPress={onReset} />
       </View>
       <View style={styles.row}>
@@ -57,6 +57,7 @@ export function Pad({
             label={busy ? "Building a board…" : primaryLabel}
             disabled={busy || primaryDisabled}
             onPress={onPrimary}
+            primary
             grow
           />
         ) : null}
@@ -88,14 +89,17 @@ function ToolButton({
   onPress,
   disabled,
   selected,
+  primary,
   grow,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   selected?: boolean;
+  primary?: boolean;
   grow?: boolean;
 }) {
+  const filled = Boolean(primary || selected);
   return (
     <Pressable
       accessibilityRole="button"
@@ -105,46 +109,46 @@ function ToolButton({
         styles.tool,
         pressable,
         grow ? { flex: 1 } : null,
-        selected ? styles.toolOn : null,
+        filled ? styles.toolOn : null,
         disabled ? styles.disabled : null,
       ]}
     >
-      <Text style={[styles.toolText, selected ? styles.toolTextOn : null]}>{label}</Text>
+      <Text style={[styles.toolText, filled ? styles.toolTextOn : null]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: 8,
+    gap: space.sm,
   },
   row: {
     flexDirection: "row",
-    gap: 8,
+    gap: space.sm,
   },
   digit: {
     flex: 1,
-    minHeight: 52,
-    borderRadius: 14,
+    minHeight: 48,
+    borderRadius: radius.md,
     borderWidth: 3,
     alignItems: "center",
     justifyContent: "center",
   },
   digitText: {
     fontFamily: sans,
-    fontSize: 26,
+    fontSize: type.title,
     fontWeight: "700",
   },
   tool: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: 12,
+    minHeight: 48,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: theme.line,
     backgroundColor: theme.white,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: space.sm,
   },
   toolOn: {
     borderColor: theme.ink,

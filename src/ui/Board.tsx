@@ -21,7 +21,7 @@ interface BoardProps {
 }
 
 export function Board({ grid, givens, cellSize, disabled, active, look, onTap }: BoardProps) {
-  const gap = cellSize >= 48 ? 6 : 4;
+  const gap = cellSize >= 48 ? 8 : 4;
   const glyph = Math.max(16, Math.round(cellSize * 0.48));
   const marked =
     active != null && active.row >= 0 && active.col >= 0 && active.row < grid.length && active.col < grid[0].length
@@ -62,10 +62,10 @@ export function Board({ grid, givens, cellSize, disabled, active, look, onTap }:
                       cell == null
                         ? onCell
                           ? theme.crossActive
-                          : onLine
-                            ? theme.cross
-                            : onLook
-                              ? theme.lookWash
+                          : onLook
+                            ? theme.lookWash
+                            : onLine
+                              ? theme.cross
                               : theme.white
                         : given
                           ? ink

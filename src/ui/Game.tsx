@@ -15,7 +15,7 @@ import { Finish } from "./Finish";
 import { Pad } from "./Pad";
 import { shareResult } from "./shareResult";
 import { TierPicker } from "./TierPicker";
-import { MAX_CELL, MIN_CELL, baseCell, clampCell, sans, theme } from "./theme";
+import { MAX_CELL, MIN_CELL, baseCell, clampCell, sans, space, theme, type } from "./theme";
 
 interface GameProps {
   storage: KeyValueStore;
@@ -482,32 +482,32 @@ const styles = StyleSheet.create({
     backgroundColor: theme.paper,
   },
   narrow: {
-    paddingTop: Platform.OS === "ios" ? 54 : 18,
-    paddingHorizontal: 12,
-    paddingBottom: Platform.OS === "ios" ? 20 : 12,
-    gap: 10,
+    paddingTop: Platform.OS === "ios" ? 54 : space.lg,
+    paddingHorizontal: space.md,
+    paddingBottom: Platform.OS === "ios" ? space.xl : space.md,
+    gap: space.sm,
   },
   wide: {
     flexDirection: "row",
-    padding: 20,
-    gap: 20,
+    padding: space.xl,
+    gap: space.xl,
   },
   top: {},
   bottom: {},
   side: {
     width: 360,
-    gap: 16,
+    gap: space.lg,
   },
   loading: {
     flex: 1,
     backgroundColor: theme.paper,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: space.md,
   },
   loadingText: {
     fontFamily: sans,
     color: theme.inkSoft,
-    fontSize: 16,
+    fontSize: type.body,
   },
 });
