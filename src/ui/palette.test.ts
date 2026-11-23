@@ -24,7 +24,12 @@ describe("palette contrast", () => {
     }
     expect(contrast(palette.gold, palette.paper)).toBeGreaterThanOrEqual(3);
     expect(contrast(palette.look, palette.paper)).toBeGreaterThanOrEqual(3);
+    expect(contrast(palette.crossEdge, palette.paper)).toBeGreaterThanOrEqual(3);
     expect(contrast(palette.zero, palette.paper)).toBeGreaterThanOrEqual(3);
     expect(contrast(palette.one, palette.paper)).toBeGreaterThanOrEqual(3);
+    expect(palette.cross).not.toBe(palette.lookWash);
+    expect(palette.crossActive).not.toBe(palette.lookWash);
+    expect(palette.crossEdge).not.toBe(palette.gold);
+    expect(palette.crossEdge).not.toBe(palette.look);
   });
 });

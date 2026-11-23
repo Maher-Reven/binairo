@@ -9,7 +9,7 @@ export const palette = {
   ink: "#1C1916",
   inkSoft: "#5C534C",
   line: "#E0D8CC",
-  /** Accent on paper and on cards. Stars, wordmark, active-line marks. */
+  /** Accent on paper and on cards. Stars and the wordmark. */
   gold: "#8A5520",
   /** The same accent, light enough to read on the dark coach. */
   accentOnDark: "#E6C08A",
@@ -22,10 +22,17 @@ export const palette = {
   coachMuted: "#D2C4B4",
   danger: "#FFD2C8",
   good: "#C9E6D4",
-  /** Quiet wash on the active row and column. Digits keep their own color. */
-  cross: "#EFE6D6",
-  crossActive: "#E7D3B0",
-  /** Hint look, a slate in the same family, distinct from the warm active line. */
+  /**
+   * Pale cool band for the active row and column.
+   * Lighter than the hint look, so the two marks stay distinct.
+   * Digits are not painted with this wash.
+   */
+  cross: "#D4E7F0",
+  /** The crossing cell, one step stronger than the band. */
+  crossActive: "#C5DCE9",
+  /** Thin edge of the band. Not the bronze of the primary buttons, and not the hint look. */
+  crossEdge: "#5E8FA3",
+  /** Hint look, a slate in the same family, distinct from the active-line band. */
   look: "#2F5D73",
   lookWash: "#D0E2EC",
 } as const;
